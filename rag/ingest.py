@@ -20,7 +20,7 @@ from pathlib import Path
 
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_openai import OpenAIEmbeddings
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_community.vectorstores import Chroma
 
 from utils.config import (
@@ -28,7 +28,7 @@ from utils.config import (
     CHUNK_OVERLAP,
     CHROMA_PERSIST_DIR,
     EMBEDDING_MODEL,
-    HASH_STORE_PATH,
+    HASH_CACHE_FILE,
 )
 
 # ---------------------------------------------------------------------------
@@ -42,16 +42,15 @@ def _compute_file_hash(file_bytes: bytes) -> str:
 
 def _load_hash_store() -> dict:
     """Load the persisted file-hash mapping."""
-    if os.path.exists(HASH_STORE_PATH):
-        with open(HASH_STORE_PATH, "r") as f:
+    if os.path.exists(HASH_CACHE_FILE):
+        with open(HASH_CACHE_FILE, "r") as f:
             return json.load(f)
     return {}
 
 
 def _save_hash_store(store: dict) -> None:
     """Persist the file-hash mapping."""
-    os.makedirs(os.path.dirname(HASH_STORE_PATH), exist_ok=True)
-    with open(HASH_STORE_PATH, "w") as f:
+    with open(HASH_CACHE_FILE, "w") as f:
         json.dump(store, f, indent=2)
 
 
@@ -159,7 +158,7 @@ def ingest_pdfs(
     # Embed and store in ChromaDB
     total_chunks = 0
     if all_docs:
-        embeddings = OpenAIEmbeddings(model=EMBEDDING_MODEL, openai_api_key=api_key)
+        embeddings = GoogleGenerativeAIEmbeddings(model=EMBEDDING_MODEL, google_api_key=api_key)
         Chroma.from_documents(
             documents=all_docs,
             embedding=embeddings,
@@ -208,7 +207,7 @@ def ingest_wikipedia_stub(text_content: str, api_key: str, course_id: str = "wik
     ]
 
     if docs:
-        embeddings = OpenAIEmbeddings(model=EMBEDDING_MODEL, openai_api_key=api_key)
+        embeddings = GoogleGenerativeAIEmbeddings(model=EMBEDDING_MODEL, google_api_key=api_key)
         Chroma.from_documents(
             documents=docs,
             embedding=embeddings,

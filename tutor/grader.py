@@ -7,7 +7,7 @@ Provides score, feedback, hints, and the correct answer.
 
 import json
 import re
-from langchain_openai import ChatOpenAI
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import SystemMessage, HumanMessage
 
 from utils.config import CHAT_MODEL
@@ -97,10 +97,10 @@ def grade_quiz(
         )
     qa_str = "\n".join(qa_parts)
 
-    llm = ChatOpenAI(
+    llm = ChatGoogleGenerativeAI(
         model=CHAT_MODEL,
         temperature=temperature,
-        openai_api_key=api_key,
+        google_api_key=api_key,
     )
 
     messages = [

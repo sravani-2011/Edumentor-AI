@@ -28,7 +28,7 @@ from tutor.quiz import generate_quiz
 from tutor.grader import grade_quiz
 from eval.metrics import compute_rouge_l, compute_bleu
 from eval.logger import create_log_entry, export_logs_csv, export_logs_json
-from utils.config import get_openai_api_key, CHUNK_SIZE, CHUNK_OVERLAP, TOP_K
+from utils.config import get_gemini_api_key, CHUNK_SIZE, CHUNK_OVERLAP, TOP_K
 
 # ---------------------------------------------------------------------------
 # Page config
@@ -481,7 +481,7 @@ st.markdown("""
     <h1>EduMentor AI</h1>
     <p class="tagline">Your Personal AI Tutor — Adaptive Learning Powered by RAG Pipeline</p>
     <div class="badges">
-        <span class="badge">🤖 GPT-4o mini</span>
+        <span class="badge">🤖 Gemini 1.5 Flash</span>
         <span class="badge">🔍 ChromaDB RAG</span>
         <span class="badge">📊 Auto-Evaluation</span>
         <span class="badge">🧠 Adaptive Quizzes</span>
@@ -508,21 +508,21 @@ with tab_setup:
         # API Key Section
         st.markdown("""
         <div class="section-card">
-            <h3>🔑 OpenAI Configuration</h3>
+            <h3>🔑 Google Gemini Configuration</h3>
         </div>
         """, unsafe_allow_html=True)
 
         api_input = st.text_input(
-            "OpenAI API Key",
+            "Gemini API Key",
             type="password",
             value=st.session_state.api_key,
-            help="Your key is stored in session memory only – never written to disk.",
+            help="Get your free key at aistudio.google.com/apikey — stored in session only.",
         )
         if api_input:
             st.session_state.api_key = api_input
 
         # Resolve key (session → .env fallback)
-        resolved_key = get_openai_api_key(st.session_state.api_key)
+        resolved_key = get_gemini_api_key(st.session_state.api_key)
         if resolved_key:
             st.markdown('<span class="status-pill status-ready">● API Connected</span>', unsafe_allow_html=True)
         else:
@@ -551,7 +551,7 @@ with tab_setup:
         with col_build:
             if st.button("🔨 Build / Update Knowledge Base", use_container_width=True):
                 if not resolved_key:
-                    st.error("Please enter your OpenAI API key first.")
+                    st.error("Please enter your Gemini API key first.")
                 elif not uploaded_files:
                     st.warning("Please upload at least one PDF file.")
                 else:
@@ -663,7 +663,7 @@ with tab_setup:
 # TAB 2 – CHAT TUTOR
 # =====================================================================
 with tab_chat:
-    resolved_key = get_openai_api_key(st.session_state.api_key)
+    resolved_key = get_gemini_api_key(st.session_state.api_key)
 
     # Sidebar controls (rendered in sidebar for this tab)
     with st.sidebar:
@@ -681,7 +681,7 @@ with tab_chat:
     # Chat input
     if prompt := st.chat_input("Ask EduMentor anything about your course…"):
         if not resolved_key:
-            st.error("Please set your OpenAI API key in the Setup tab first.")
+            st.error("Please set your Gemini API key in the Setup tab first.")
         else:
             # Show user message
             st.session_state.chat_history.append({"role": "user", "content": prompt})
@@ -765,7 +765,7 @@ with tab_chat:
 # TAB 3 – PRACTICE QUIZ
 # =====================================================================
 with tab_quiz:
-    resolved_key = get_openai_api_key(st.session_state.api_key)
+    resolved_key = get_gemini_api_key(st.session_state.api_key)
 
     st.markdown("""
     <div class="section-card">
@@ -775,7 +775,7 @@ with tab_quiz:
     st.caption("Generate a quiz from your last chat topic to reinforce learning.")
 
     if not resolved_key:
-        st.warning("Set your OpenAI API key in the Setup tab first.")
+        st.warning("Set your Gemini API key in the Setup tab first.")
     elif not st.session_state.last_chunks:
         st.info("💡 Ask a question in the Chat Tutor tab first, then come here to quiz yourself!")
     else:

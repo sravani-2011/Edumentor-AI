@@ -7,7 +7,7 @@ context chunks. Questions include correct answers and difficulty tags.
 
 import json
 import re
-from langchain_openai import ChatOpenAI
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import SystemMessage, HumanMessage
 
 from utils.config import CHAT_MODEL
@@ -100,10 +100,10 @@ def generate_quiz(
     if not context_str.strip():
         return {"error": "No context available to generate quiz questions."}
 
-    llm = ChatOpenAI(
+    llm = ChatGoogleGenerativeAI(
         model=CHAT_MODEL,
         temperature=temperature,
-        openai_api_key=api_key,
+        google_api_key=api_key,
     )
 
     messages = [

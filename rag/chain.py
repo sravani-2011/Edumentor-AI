@@ -6,7 +6,7 @@ carefully designed system prompt that enforces citation, no-fabrication,
 and adaptive explanation style.
 """
 
-from langchain_openai import ChatOpenAI
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import SystemMessage, HumanMessage
 
 from utils.config import CHAT_MODEL, DEFAULT_TEMPERATURE
@@ -166,10 +166,10 @@ def get_rag_answer(
         )
     )
 
-    llm = ChatOpenAI(
+    llm = ChatGoogleGenerativeAI(
         model=CHAT_MODEL,
         temperature=temperature,
-        openai_api_key=api_key,
+        google_api_key=api_key,
     )
 
     response = llm.invoke([system_msg, human_msg])

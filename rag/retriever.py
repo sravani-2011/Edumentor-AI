@@ -6,7 +6,7 @@ similarity threshold, and flags low-confidence results.
 """
 
 import os
-from langchain_openai import OpenAIEmbeddings
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_community.vectorstores import Chroma
 
 from utils.config import (
@@ -26,7 +26,7 @@ def get_vectorstore(api_key: str) -> Chroma | None:
     if not os.path.exists(CHROMA_PERSIST_DIR):
         return None
 
-    embeddings = OpenAIEmbeddings(model=EMBEDDING_MODEL, openai_api_key=api_key)
+    embeddings = GoogleGenerativeAIEmbeddings(model=EMBEDDING_MODEL, google_api_key=api_key)
     return Chroma(
         persist_directory=CHROMA_PERSIST_DIR,
         embedding_function=embeddings,
