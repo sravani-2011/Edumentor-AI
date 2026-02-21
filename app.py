@@ -672,10 +672,23 @@ with tab_chat:
     # Sidebar controls (rendered in sidebar for this tab)
     with st.sidebar:
         st.markdown("### 🎛️ Chat Controls")
-        top_k = st.slider("Top K (retrieval)", 1, 15, TOP_K, help="Number of chunks to retrieve.")
+        top_k = st.slider("Top-K Results", 1, 15, TOP_K, help="Number of chunks to retrieve.")
         temperature = st.slider("Temperature", 0.0, 1.0, 0.3, 0.05, help="LLM creativity.")
         explain_simply = st.toggle("🧒 Explain Like I'm 12", value=False)
         verbosity = st.slider("Verbosity", 1, 10, 5, help="1 = concise, 10 = detailed.")
+
+        # Learner profile summary
+        st.markdown("---")
+        lp = st.session_state.learner_profile
+        st.markdown(
+            f"👤 **{lp.name}** | 📚 **{lp.skill_level}** | 🎓 {lp.course}"
+        )
+
+        # Clear chat history button
+        if st.button("🗑️ Clear Chat History", use_container_width=True):
+            st.session_state.chat_history = []
+            st.session_state.last_chunks = []
+            st.rerun()
 
     # Display chat history
     for msg in st.session_state.chat_history:
