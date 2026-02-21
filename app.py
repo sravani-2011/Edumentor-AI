@@ -481,7 +481,7 @@ st.markdown("""
     <h1>EduMentor AI</h1>
     <p class="tagline">Your Personal AI Tutor — Adaptive Learning Powered by RAG Pipeline</p>
     <div class="badges">
-        <span class="badge">🤖 Gemini 2.0 Flash</span>
+        <span class="badge">🤖 Gemini 2.5 Flash Lite</span>
         <span class="badge">🔍 ChromaDB RAG</span>
         <span class="badge">📊 Auto-Evaluation</span>
         <span class="badge">🧠 Adaptive Quizzes</span>
@@ -751,23 +751,24 @@ with tab_chat:
                             st.session_state.chat_history.append({"role": "user", "content": fu})
                             st.rerun()
 
-            # Save assistant message
-            st.session_state.chat_history.append({"role": "assistant", "content": answer})
+            # Save assistant message and compute metrics (only if answer succeeded)
+            if answer:
+                st.session_state.chat_history.append({"role": "assistant", "content": answer})
 
-            # --- Compute evaluation metrics and log ---
-            context_text = " ".join([c["content"] for c in chunks])
-            rouge = compute_rouge_l(answer, context_text) if context_text else {"f1": 0}
-            bleu_result = compute_bleu(answer, context_text) if context_text else {"bleu": 0}
+                # --- Compute evaluation metrics and log ---
+                context_text = " ".join([c["content"] for c in chunks])
+                rouge = compute_rouge_l(answer, context_text) if context_text else {"f1": 0}
+                bleu_result = compute_bleu(answer, context_text) if context_text else {"bleu": 0}
 
-            log_entry = create_log_entry(
-                query=prompt,
-                answer=answer,
-                retrieval_scores=[c.get("score", 0) for c in chunks],
-                rouge_l=rouge["f1"],
-                bleu=bleu_result["bleu"],
-                is_confident=is_confident,
-            )
-            st.session_state.logs.append(log_entry)
+                log_entry = create_log_entry(
+                    query=prompt,
+                    answer=answer,
+                    retrieval_scores=[c.get("score", 0) for c in chunks],
+                    rouge_l=rouge["f1"],
+                    bleu=bleu_result["bleu"],
+                    is_confident=is_confident,
+                )
+                st.session_state.logs.append(log_entry)
 
 
 # =====================================================================
