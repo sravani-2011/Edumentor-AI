@@ -1,0 +1,8 @@
+.env
+chroma_store/
+__pycache__/
+*.pyc
+.streamlit/
+logs/
+*.csv
+*.json
