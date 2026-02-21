@@ -6,9 +6,12 @@ touching core logic.
 """
 
 import os
-from dotenv import load_dotenv
 
-load_dotenv()  # load .env if present
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass  # dotenv not available on Streamlit Cloud
 
 # ── Chunking ────────────────────────────────────────────────────────────
 CHUNK_SIZE: int = 800          # characters per chunk
@@ -33,8 +36,15 @@ HASH_CACHE_FILE: str = ".file_hashes.json"
 def get_gemini_api_key(session_key: str = "") -> str:
     """
     Return the best available Gemini API key.
-    Priority: session_key (from UI) → GOOGLE_API_KEY env var → empty string.
+    Priority: session_key (from UI) → st.secrets → GOOGLE_API_KEY env var → empty string.
     """
     if session_key:
         return session_key
+    # Try Streamlit secrets (used on Streamlit Cloud)
+    try:
+        import streamlit as st
+        if "GOOGLE_API_KEY" in st.secrets:
+            return st.secrets["GOOGLE_API_KEY"]
+    except Exception:
+        pass
     return os.getenv("GOOGLE_API_KEY", "")

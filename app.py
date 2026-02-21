@@ -702,18 +702,27 @@ with tab_chat:
                     lp.record_concept(prompt[:60])
 
                     # Generate answer
-                    answer = get_rag_answer(
-                        question=prompt,
-                        chunks=chunks,
-                        is_confident=is_confident,
-                        learner_profile=lp.to_dict(),
-                        api_key=resolved_key,
-                        temperature=temperature,
-                        explain_simply=explain_simply,
-                        verbosity=verbosity,
-                    )
+                    try:
+                        answer = get_rag_answer(
+                            question=prompt,
+                            chunks=chunks,
+                            is_confident=is_confident,
+                            learner_profile=lp.to_dict(),
+                            api_key=resolved_key,
+                            temperature=temperature,
+                            explain_simply=explain_simply,
+                            verbosity=verbosity,
+                        )
+                    except Exception as e:
+                        answer = None
+                        st.error(f"⚠️ Gemini API Error: {e}")
+                        st.info("💡 **Troubleshooting tips:**\n"
+                                "1. Check that your Gemini API key is valid at [aistudio.google.com](https://aistudio.google.com)\n"
+                                "2. Make sure you haven't exceeded the free tier rate limit (15 req/min)\n"
+                                "3. Try again in a few seconds")
 
-                st.markdown(answer)
+                if answer:
+                    st.markdown(answer)
 
                 # Citations section
                 if chunks:
