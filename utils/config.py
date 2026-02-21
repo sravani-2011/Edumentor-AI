@@ -22,7 +22,7 @@ TOP_K: int = 5                 # default number of chunks to retrieve
 SIMILARITY_THRESHOLD: float = 0.3   # below → "low confidence" flag
 
 # ── Google Gemini Models ────────────────────────────────────────────────
-CHAT_MODEL: str = "gemini-2.5-flash-lite-preview-06-17"  # free tier, generous quota
+CHAT_MODEL: str = "gemini-2.5-flash-lite"       # free tier, fast + cheap
 EMBEDDING_MODEL: str = "models/gemini-embedding-001"   # current embedding model
 
 # ── LLM defaults ────────────────────────────────────────────────────────
