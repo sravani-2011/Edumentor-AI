@@ -556,16 +556,20 @@ with tab_setup:
                     st.warning("Please upload at least one PDF file.")
                 else:
                     with st.spinner("Ingesting PDFs and building vector store…"):
-                        result = ingest_pdfs(
-                            uploaded_files=uploaded_files,
-                            api_key=resolved_key,
-                            course_id=course_id,
-                        )
-                    st.success(
-                        f"✅ Done! Ingested **{result['ingested']}** file(s), "
-                        f"skipped **{result['skipped']}** (unchanged), "
-                        f"created **{result['total_chunks']}** chunks."
-                    )
+                        try:
+                            result = ingest_pdfs(
+                                uploaded_files=uploaded_files,
+                                api_key=resolved_key,
+                                course_id=course_id,
+                            )
+                            st.success(
+                                f"✅ Done! Ingested **{result['ingested']}** file(s), "
+                                f"skipped **{result['skipped']}** (unchanged), "
+                                f"created **{result['total_chunks']}** chunks."
+                            )
+                        except Exception as e:
+                            st.error(f"⚠️ Ingestion Error: {e}")
+                            st.info("💡 Check your Gemini API key and try again.")
 
         with col_clear:
             if st.button("🗑️ Clear Vector Store", use_container_width=True):
