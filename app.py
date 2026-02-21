@@ -481,7 +481,7 @@ st.markdown("""
     <h1>EduMentor AI</h1>
     <p class="tagline">Your Personal AI Tutor — Adaptive Learning Powered by RAG Pipeline</p>
     <div class="badges">
-        <span class="badge">🤖 Gemini 1.5 Flash</span>
+        <span class="badge">🤖 Gemini 2.0 Flash</span>
         <span class="badge">🔍 ChromaDB RAG</span>
         <span class="badge">📊 Auto-Evaluation</span>
         <span class="badge">🧠 Adaptive Quizzes</span>
