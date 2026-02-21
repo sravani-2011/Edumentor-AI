@@ -696,9 +696,15 @@ with tab_chat:
             with st.chat_message("assistant"):
                 with st.spinner("Thinking…"):
                     # Retrieve
-                    retrieval = retrieve(prompt, resolved_key, top_k=top_k)
-                    chunks = retrieval["chunks"]
-                    is_confident = retrieval["is_confident"]
+                    try:
+                        retrieval = retrieve(prompt, resolved_key, top_k=top_k)
+                        chunks = retrieval["chunks"]
+                        is_confident = retrieval["is_confident"]
+                    except Exception as e:
+                        st.error(f"⚠️ Retrieval Error: {e}")
+                        st.info("💡 Make sure you've uploaded PDFs first and your API key is valid.")
+                        chunks = []
+                        is_confident = False
                     st.session_state.last_chunks = chunks
 
                     # Record concept

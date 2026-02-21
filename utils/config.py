@@ -23,7 +23,7 @@ SIMILARITY_THRESHOLD: float = 0.3   # below → "low confidence" flag
 
 # ── Google Gemini Models ────────────────────────────────────────────────
 CHAT_MODEL: str = "gemini-2.5-flash-lite"       # free tier, fast + cheap
-EMBEDDING_MODEL: str = "models/gemini-embedding-001"   # current embedding model
+EMBEDDING_MODEL: str = "gemini-embedding-001"   # current embedding model
 
 # ── LLM defaults ────────────────────────────────────────────────────────
 DEFAULT_TEMPERATURE: float = 0.3
