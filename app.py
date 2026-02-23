@@ -868,15 +868,25 @@ with tab_quiz:
     elif not st.session_state.last_chunks:
         st.info("💡 Ask a question in the Chat Tutor tab first, then come here to quiz yourself!")
     else:
-        # Quiz generation
-        num_q = st.slider("Number of questions", 3, 5, 4)
-        if st.button("🎲 Generate Quiz", use_container_width=True):
+        # Quiz controls: two columns like the screenshot
+        quiz_left, quiz_right = st.columns([2, 1])
+        with quiz_left:
+            if st.button("🎲 Generate Quiz from Last Chat Topic", use_container_width=True):
+                st.session_state._generate_quiz = True
+        with quiz_right:
+            num_q = st.number_input("Number of questions", min_value=3, max_value=10, value=5, step=1)
+            difficulty = st.selectbox("Difficulty", ["Mixed", "Easy", "Medium", "Hard"])
+
+        if getattr(st.session_state, "_generate_quiz", False):
+            st.session_state._generate_quiz = False
             with st.spinner("Generating quiz from your last topic…"):
                 lp = st.session_state.learner_profile
+                # Map difficulty to skill_level override for the prompt
+                diff_map = {"Easy": "Beginner", "Medium": "Intermediate", "Hard": "Advanced", "Mixed": lp.skill_level}
                 quiz = generate_quiz(
                     chunks=st.session_state.last_chunks,
                     api_key=resolved_key,
-                    skill_level=lp.skill_level,
+                    skill_level=diff_map[difficulty],
                     num_questions=num_q,
                 )
             if "error" in quiz:
