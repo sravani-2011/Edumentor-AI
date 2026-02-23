@@ -31,7 +31,15 @@ from tutor.summarizer import generate_summary
 from eval.metrics import compute_rouge_l, compute_bleu
 from eval.logger import create_log_entry, export_logs_csv, export_logs_json
 from utils.config import get_gemini_api_key, CHUNK_SIZE, CHUNK_OVERLAP, TOP_K
+from auth import register_user, login_user, update_score, get_leaderboard
+from tools.video_summarizer import summarize_video
+from tools.blog_summarizer import summarize_blog
+from tools.mindmap import generate_mindmap, generate_concept_tree
+from tools.audio_summarizer import summarize_audio
+from tools.coding_challenge import generate_coding_challenge, evaluate_solution
 import json as json_lib
+import plotly.graph_objects as go
+import plotly.express as px
 
 # ---------------------------------------------------------------------------
 # Page config
@@ -473,24 +481,72 @@ DEFAULTS = {
     "language": "English",      # response language
     "flashcards": [],           # generated flashcards
     "summary": "",              # generated summary
+    "logged_in": False,         # auth state
+    "username": "",             # current user
+    "current_challenge": None,  # active coding challenge
+    "challenge_start": None,    # challenge timer start
 }
 for key, default in DEFAULTS.items():
     if key not in st.session_state:
         st.session_state[key] = default
 
 # ---------------------------------------------------------------------------
-# ✨ Hero Header
+# 🔐 LOGIN / REGISTER PAGE
 # ---------------------------------------------------------------------------
-st.markdown("""
+if not st.session_state.logged_in:
+    st.markdown("""
+    <div class="hero">
+        <span class="hero-icon">🎓</span>
+        <h1>EduMentor AI</h1>
+        <p class="tagline">Your Personal AI Tutor — Adaptive Learning Powered by RAG Pipeline</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    auth_tab1, auth_tab2 = st.tabs(["🔑 Login", "📝 Register"])
+    with auth_tab1:
+        st.markdown("### Welcome Back!")
+        login_user_input = st.text_input("Username", key="login_username")
+        login_pass_input = st.text_input("Password", type="password", key="login_password")
+        if st.button("🔓 Login", use_container_width=True):
+            result = login_user(login_user_input, login_pass_input)
+            if result.get("ok"):
+                st.session_state.logged_in = True
+                st.session_state.username = login_user_input
+                st.rerun()
+            else:
+                st.error(result.get("error", "Login failed."))
+
+    with auth_tab2:
+        st.markdown("### Create an Account")
+        reg_user = st.text_input("Choose a Username", key="reg_username")
+        reg_pass = st.text_input("Choose a Password", type="password", key="reg_password")
+        reg_pass2 = st.text_input("Confirm Password", type="password", key="reg_password2")
+        if st.button("✅ Register", use_container_width=True):
+            if reg_pass != reg_pass2:
+                st.error("Passwords do not match.")
+            else:
+                result = register_user(reg_user, reg_pass)
+                if result.get("ok"):
+                    st.success("Account created! Please log in.")
+                else:
+                    st.error(result.get("error", "Registration failed."))
+
+    st.stop()  # Don't show main app until logged in
+
+# ---------------------------------------------------------------------------
+# ✨ Hero Header (logged in)
+# ---------------------------------------------------------------------------
+st.markdown(f"""
 <div class="hero">
     <span class="hero-icon">🎓</span>
     <h1>EduMentor AI</h1>
-    <p class="tagline">Your Personal AI Tutor — Adaptive Learning Powered by RAG Pipeline</p>
+    <p class="tagline">Welcome, {st.session_state.username}! — Adaptive Learning Powered by RAG</p>
     <div class="badges">
-        <span class="badge">🤖 Gemini 2.5 Flash Lite</span>
+        <span class="badge">🤖 Gemini 2.0 Flash</span>
         <span class="badge">🔍 ChromaDB RAG</span>
         <span class="badge">📊 Auto-Evaluation</span>
         <span class="badge">🧠 Adaptive Quizzes</span>
+        <span class="badge">🏆 Competitive Coding</span>
     </div>
 </div>
 """, unsafe_allow_html=True)
@@ -498,8 +554,11 @@ st.markdown("""
 # ---------------------------------------------------------------------------
 # Tabs
 # ---------------------------------------------------------------------------
-tab_setup, tab_chat, tab_quiz, tab_flash, tab_summary, tab_insights = st.tabs([
-    "⚙️ Setup", "💬 Chat Tutor", "📝 Practice Quiz", "📇 Flashcards", "📋 Summary", "📊 Insights"
+(tab_setup, tab_chat, tab_quiz, tab_code, tab_flash, tab_summary,
+ tab_video, tab_blog, tab_mindmap, tab_audio, tab_leader, tab_insights) = st.tabs([
+    "⚙️ Setup", "💬 Chat Tutor", "📝 Quiz", "🏆 Code Challenge",
+    "📇 Flashcards", "📋 Summary", "🎥 Video", "📰 Blog",
+    "🧠 Mind Map", "🎧 Audio", "🏅 Leaderboard", "📊 Insights",
 ])
 
 
@@ -728,6 +787,14 @@ with tab_chat:
         explain_simply = st.toggle("🧒 Explain Like I'm 12", value=False)
         verbosity = st.slider("Verbosity", 1, 10, 5, help="1 = concise, 10 = detailed.")
 
+        # Multi-modal: image upload
+        st.markdown("---")
+        st.markdown("### 📷 Image Input")
+        uploaded_img = st.file_uploader("Upload image to ask about", type=["png", "jpg", "jpeg", "webp"],
+                                         key="sidebar_img")
+        if uploaded_img:
+            st.image(uploaded_img, caption="Uploaded image", use_container_width=True)
+
         # Learner profile summary
         st.markdown("---")
         lp = st.session_state.learner_profile
@@ -739,6 +806,13 @@ with tab_chat:
         if st.button("🗑️ Clear Chat History", use_container_width=True):
             st.session_state.chat_history = []
             st.session_state.last_chunks = []
+            st.rerun()
+
+        # Logout button
+        st.markdown("---")
+        if st.button("🚪 Logout", use_container_width=True):
+            st.session_state.logged_in = False
+            st.session_state.username = ""
             st.rerun()
 
     # Display chat history
@@ -1188,7 +1262,343 @@ with tab_summary:
 
 
 # =====================================================================
-# TAB 6 – INSIGHTS
+# TAB 6 – CODE CHALLENGE (Timed Coding)
+# =====================================================================
+with tab_code:
+    st.markdown("""
+    <div class="section-card">
+        <h3>🏆 Timed Coding Challenge</h3>
+        <p>Test your coding skills with AI-generated challenges based on your study material!</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    resolved_key = get_gemini_api_key(st.session_state.api_key)
+
+    if not resolved_key:
+        st.warning("🔑 Please set your API key in the Setup tab first.")
+    elif not st.session_state.last_chunks:
+        st.info("💬 Ask at least one question in Chat Tutor first to generate challenges from your material.")
+    else:
+        cc1, cc2 = st.columns(2)
+        with cc1:
+            ch_difficulty = st.selectbox("Difficulty", ["Easy", "Medium", "Hard"], index=1, key="ch_diff")
+        with cc2:
+            ch_lang = st.selectbox("Language", ["Python", "JavaScript", "Java", "C++", "C"], key="ch_lang")
+
+        if st.button("🎯 Generate Challenge", use_container_width=True):
+            with st.spinner("Generating coding challenge..."):
+                challenge = generate_coding_challenge(
+                    chunks=st.session_state.last_chunks,
+                    api_key=resolved_key,
+                    difficulty=ch_difficulty,
+                    language=ch_lang,
+                )
+                if "error" in challenge:
+                    st.error(challenge["error"])
+                else:
+                    st.session_state.current_challenge = challenge
+                    import time
+                    st.session_state.challenge_start = time.time()
+
+        if st.session_state.current_challenge:
+            ch = st.session_state.current_challenge
+            st.markdown(f"### 📌 {ch.get('title', 'Coding Challenge')}")
+            st.markdown(f"**Difficulty:** {ch.get('difficulty', 'Medium')} | "
+                       f"**Time Limit:** {ch.get('time_limit', 30)} min | "
+                       f"**Max Score:** {ch.get('max_score', 20)} pts")
+
+            # Timer display
+            if st.session_state.challenge_start:
+                import time
+                elapsed = int(time.time() - st.session_state.challenge_start)
+                time_limit_sec = ch.get("time_limit", 30) * 60
+                remaining = max(0, time_limit_sec - elapsed)
+                mins, secs = divmod(remaining, 60)
+                color = "#ef4444" if remaining < 120 else "#22c55e"
+                st.markdown(f'<p style="font-size:1.3em; color:{color};">⏱️ Time Remaining: '
+                           f'<b>{mins:02d}:{secs:02d}</b></p>', unsafe_allow_html=True)
+
+            st.markdown(ch.get("description", ""))
+
+            if ch.get("examples"):
+                st.markdown("**Examples:**")
+                for ex in ch["examples"]:
+                    st.code(f"Input: {ex.get('input', '')}\nOutput: {ex.get('output', '')}")
+
+            if ch.get("constraints"):
+                st.markdown("**Constraints:** " + ", ".join(ch["constraints"]))
+
+            user_code = st.text_area("💻 Your Solution:", height=250, key="user_code",
+                                      value=ch.get("solution_template", ""))
+
+            if ch.get("hints"):
+                with st.expander("💡 Hints"):
+                    for h in ch["hints"]:
+                        st.markdown(f"- {h}")
+
+            if st.button("✅ Submit Solution", use_container_width=True):
+                if not user_code.strip():
+                    st.warning("Please write some code first!")
+                else:
+                    with st.spinner("Evaluating your solution..."):
+                        result = evaluate_solution(ch, user_code, resolved_key)
+                        if "error" in result:
+                            st.error(result["error"])
+                        else:
+                            score = result.get("score", 0)
+                            if score >= 70:
+                                st.balloons()
+                                st.success(f"🎉 Score: {score}/100 — {result.get('correctness', 'N/A')}")
+                            elif score >= 40:
+                                st.warning(f"⚡ Score: {score}/100 — {result.get('correctness', 'N/A')}")
+                            else:
+                                st.error(f"❌ Score: {score}/100 — {result.get('correctness', 'N/A')}")
+
+                            st.markdown(f"**Feedback:** {result.get('feedback', 'N/A')}")
+                            if result.get("suggestions"):
+                                st.markdown("**Suggestions:**")
+                                for s in result["suggestions"]:
+                                    st.markdown(f"- {s}")
+
+                            # Update leaderboard score
+                            earned = int(ch.get("max_score", 20) * score / 100)
+                            update_score(st.session_state.username, earned, "challenge")
+                            st.info(f"🏅 +{earned} points added to your leaderboard score!")
+
+
+# =====================================================================
+# TAB 7 – VIDEO SUMMARIZER
+# =====================================================================
+with tab_video:
+    st.markdown("""
+    <div class="section-card">
+        <h3>🎥 YouTube Video Summarizer</h3>
+        <p>Paste a YouTube link to get an AI-powered summary with key topics and practice questions.</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    resolved_key = get_gemini_api_key(st.session_state.api_key)
+
+    if not resolved_key:
+        st.warning("🔑 Please set your API key in the Setup tab first.")
+    else:
+        video_url = st.text_input("🔗 YouTube URL:", placeholder="https://www.youtube.com/watch?v=...",
+                                   key="video_url_input")
+        if st.button("📺 Summarize Video", use_container_width=True):
+            if not video_url:
+                st.warning("Please enter a YouTube URL.")
+            else:
+                with st.spinner("Fetching transcript and summarizing..."):
+                    result = summarize_video(video_url, resolved_key)
+                    if "error" in result:
+                        st.error(result["error"])
+                    else:
+                        st.session_state["video_summary"] = result
+                        st.success("✅ Video summarized!")
+
+        if st.session_state.get("video_summary"):
+            vs = st.session_state["video_summary"]
+            if vs.get("video_id"):
+                st.markdown(f'<iframe width="100%" height="315" src="https://www.youtube.com/embed/{vs["video_id"]}" '
+                           f'frameborder="0" allowfullscreen></iframe>', unsafe_allow_html=True)
+            st.markdown(vs.get("summary", ""))
+            st.download_button("📥 Download Summary", data=vs.get("summary", ""),
+                              file_name="video_summary.md", mime="text/markdown",
+                              use_container_width=True)
+
+
+# =====================================================================
+# TAB 8 – BLOG SUMMARIZER
+# =====================================================================
+with tab_blog:
+    st.markdown("""
+    <div class="section-card">
+        <h3>📰 Blog / Article Summarizer</h3>
+        <p>Paste any blog or article URL to extract and summarize its content instantly.</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    resolved_key = get_gemini_api_key(st.session_state.api_key)
+
+    if not resolved_key:
+        st.warning("🔑 Please set your API key in the Setup tab first.")
+    else:
+        blog_url = st.text_input("🔗 Blog/Article URL:", placeholder="https://example.com/article",
+                                  key="blog_url_input")
+        if st.button("📰 Summarize Article", use_container_width=True):
+            if not blog_url:
+                st.warning("Please enter a blog URL.")
+            else:
+                with st.spinner("Extracting and summarizing..."):
+                    result = summarize_blog(blog_url, resolved_key)
+                    if "error" in result:
+                        st.error(result["error"])
+                    else:
+                        st.session_state["blog_summary"] = result
+                        st.success("✅ Article summarized!")
+
+        if st.session_state.get("blog_summary"):
+            bs = st.session_state["blog_summary"]
+            st.markdown(bs.get("summary", ""))
+            st.download_button("📥 Download Summary", data=bs.get("summary", ""),
+                              file_name="blog_summary.md", mime="text/markdown",
+                              use_container_width=True)
+
+
+# =====================================================================
+# TAB 9 – MIND MAP
+# =====================================================================
+with tab_mindmap:
+    st.markdown("""
+    <div class="section-card">
+        <h3>🧠 Mind Map Generator</h3>
+        <p>Visualize any topic as an interactive concept hierarchy to boost understanding and retention.</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    resolved_key = get_gemini_api_key(st.session_state.api_key)
+
+    if not resolved_key:
+        st.warning("🔑 Please set your API key in the Setup tab first.")
+    else:
+        mm_topic = st.text_input("📌 Topic:", placeholder="e.g., Machine Learning Algorithms",
+                                  key="mindmap_topic")
+        mm_context = ""
+        if st.session_state.last_chunks:
+            mm_context = " ".join([c.get("content", "") for c in st.session_state.last_chunks[:3]])
+
+        if st.button("🧠 Generate Mind Map", use_container_width=True):
+            if not mm_topic:
+                st.warning("Please enter a topic.")
+            else:
+                with st.spinner("Generating mind map..."):
+                    # Generate concept tree (text-based, always works)
+                    tree_result = generate_concept_tree(mm_topic, resolved_key)
+                    if "error" not in tree_result:
+                        st.session_state["mindmap_tree"] = tree_result
+
+                    # Also try Mermaid diagram
+                    mm_result = generate_mindmap(mm_topic, mm_context, resolved_key)
+                    if "error" not in mm_result:
+                        st.session_state["mindmap_mermaid"] = mm_result
+
+        if st.session_state.get("mindmap_tree"):
+            st.markdown("### 🌳 Concept Hierarchy")
+            st.code(st.session_state["mindmap_tree"]["tree"], language=None)
+
+        if st.session_state.get("mindmap_mermaid"):
+            st.markdown("### 🗺️ Visual Mind Map (Mermaid)")
+            mermaid_code = st.session_state["mindmap_mermaid"]["mermaid"]
+            # Render Mermaid via HTML
+            mermaid_html = f"""
+            <div class="mermaid" style="background: #1a1a2e; padding: 20px; border-radius: 12px;">
+            {mermaid_code}
+            </div>
+            <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+            <script>mermaid.initialize({{startOnLoad:true, theme:'dark'}});</script>
+            """
+            st.components.v1.html(mermaid_html, height=500, scrolling=True)
+
+            with st.expander("📝 Raw Mermaid Code"):
+                st.code(mermaid_code, language="text")
+
+
+# =====================================================================
+# TAB 10 – AUDIO SUMMARIZER
+# =====================================================================
+with tab_audio:
+    st.markdown("""
+    <div class="section-card">
+        <h3>🎧 Audio Summarizer</h3>
+        <p>Upload a lecture recording or audio file to get a structured AI summary.</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    resolved_key = get_gemini_api_key(st.session_state.api_key)
+
+    if not resolved_key:
+        st.warning("🔑 Please set your API key in the Setup tab first.")
+    else:
+        audio_file = st.file_uploader("🎙️ Upload Audio File",
+                                       type=["mp3", "wav", "ogg", "m4a", "flac", "aac"],
+                                       key="audio_upload")
+        if audio_file:
+            st.audio(audio_file)
+            if st.button("🎧 Summarize Audio", use_container_width=True):
+                with st.spinner("Transcribing and summarizing audio... this may take a minute."):
+                    result = summarize_audio(audio_file.getvalue(), audio_file.name, resolved_key)
+                    if "error" in result:
+                        st.error(result["error"])
+                    else:
+                        st.session_state["audio_summary"] = result
+                        st.success("✅ Audio summarized!")
+
+        if st.session_state.get("audio_summary"):
+            st.markdown(st.session_state["audio_summary"].get("summary", ""))
+            st.download_button("📥 Download Summary",
+                              data=st.session_state["audio_summary"].get("summary", ""),
+                              file_name="audio_summary.md", mime="text/markdown",
+                              use_container_width=True)
+
+
+# =====================================================================
+# TAB 11 – LEADERBOARD
+# =====================================================================
+with tab_leader:
+    st.markdown("""
+    <div class="section-card">
+        <h3>🏅 Leaderboard</h3>
+        <p>See how you rank against other learners! Earn points from quizzes and coding challenges.</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    board = get_leaderboard(top_n=20)
+
+    if not board:
+        st.info("No scores yet. Take quizzes and coding challenges to appear on the leaderboard!")
+    else:
+        # Highlight current user
+        st.markdown(f"**Your Username:** `{st.session_state.username}`")
+
+        # Display leaderboard as table
+        for rank, entry in enumerate(board, 1):
+            is_me = entry["username"].lower() == st.session_state.username.lower()
+            medal = "🥇" if rank == 1 else "🥈" if rank == 2 else "🥉" if rank == 3 else f"#{rank}"
+            bg = "background: linear-gradient(135deg, #6366f1, #8b5cf6); color: white;" if is_me else ""
+            st.markdown(f"""
+            <div style="display:flex; align-items:center; padding:10px 15px;
+                        margin:4px 0; border-radius:10px; {bg}
+                        border: 1px solid {'#6366f1' if is_me else '#333'};">
+                <span style="font-size:1.3em; width:50px;">{medal}</span>
+                <span style="flex:1; font-weight:{'bold' if is_me else 'normal'};">
+                    {entry['username']} {'(You)' if is_me else ''}</span>
+                <span style="margin-right:20px;">🏆 {entry['score']} pts</span>
+                <span style="margin-right:20px;">📝 {entry['quizzes']} quizzes</span>
+                <span style="margin-right:20px;">💻 {entry['challenges']} challenges</span>
+                <span>🔥 {entry['streak']} best streak</span>
+            </div>
+            """, unsafe_allow_html=True)
+
+        # Score breakdown chart using plotly
+        if board:
+            st.markdown("### 📊 Score Distribution")
+            import pandas as pd
+            df = pd.DataFrame(board[:10])
+            fig = px.bar(df, x="username", y="score",
+                        color="score", title="Top 10 Learners",
+                        color_continuous_scale="Viridis")
+            fig.update_layout(
+                plot_bgcolor="rgba(0,0,0,0)",
+                paper_bgcolor="rgba(0,0,0,0)",
+                font_color="white",
+                xaxis_title="Learner",
+                yaxis_title="Score",
+            )
+            st.plotly_chart(fig, use_container_width=True)
+
+
+# =====================================================================
+# TAB 12 – INSIGHTS
 # =====================================================================
 with tab_insights:
     st.markdown("""
