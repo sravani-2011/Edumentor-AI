@@ -155,17 +155,46 @@ def ingest_pdfs(
             if os.path.exists(tmp_path):
                 os.remove(tmp_path)
 
-    # Embed and store in ChromaDB
+    # Embed and store in ChromaDB (batched to avoid rate limits)
     total_chunks = 0
+    BATCH_SIZE = 20  # embed 20 chunks at a time to stay under free tier limits
+
     if all_docs:
         embeddings = GoogleGenerativeAIEmbeddings(model=EMBEDDING_MODEL, google_api_key=api_key)
-        Chroma.from_documents(
-            documents=all_docs,
-            embedding=embeddings,
-            persist_directory=CHROMA_PERSIST_DIR,
-            collection_name="edu_mentor",
-        )
-        total_chunks = len(all_docs)
+
+        for i in range(0, len(all_docs), BATCH_SIZE):
+            batch = all_docs[i : i + BATCH_SIZE]
+            max_retries = 5
+            for attempt in range(max_retries):
+                try:
+                    if i == 0:
+                        # First batch: create the collection
+                        Chroma.from_documents(
+                            documents=batch,
+                            embedding=embeddings,
+                            persist_directory=CHROMA_PERSIST_DIR,
+                            collection_name="edu_mentor",
+                        )
+                    else:
+                        # Subsequent batches: add to existing collection
+                        vectorstore = Chroma(
+                            persist_directory=CHROMA_PERSIST_DIR,
+                            embedding_function=embeddings,
+                            collection_name="edu_mentor",
+                        )
+                        vectorstore.add_documents(batch)
+                    total_chunks += len(batch)
+                    break  # success, move to next batch
+                except Exception as e:
+                    if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
+                        wait_time = min(2 ** attempt * 5, 60)  # 5s, 10s, 20s, 40s, 60s
+                        time.sleep(wait_time)
+                    else:
+                        raise  # re-raise non-rate-limit errors
+
+            # Small delay between batches to be safe
+            if i + BATCH_SIZE < len(all_docs):
+                time.sleep(2)
 
     _save_hash_store(hash_store)
 
