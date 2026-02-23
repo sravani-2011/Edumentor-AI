@@ -746,7 +746,68 @@ with tab_chat:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
 
-    # Chat input — also check for pending follow-up questions
+    # --- Voice input (direct command) ---
+    voice_html = """
+    <div style="text-align:center; margin-bottom:8px;">
+        <button id="voice-btn" onclick="startVoice()" style="
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            color: white; border: none; padding: 10px 20px;
+            border-radius: 10px; cursor: pointer; font-size: 15px;
+            transition: all 0.3s; display:inline-flex; align-items:center; gap:6px;">
+            🎤 Voice Input
+        </button>
+        <span id="voice-status" style="margin-left:10px; font-size:0.85em; color:#aaa;"></span>
+    </div>
+    <script>
+    function startVoice() {
+        if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+            document.getElementById('voice-status').textContent = '❌ Not supported in this browser';
+            return;
+        }
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        const recognition = new SpeechRecognition();
+        recognition.lang = 'en-US';
+        recognition.interimResults = false;
+        recognition.maxAlternatives = 1;
+        const btn = document.getElementById('voice-btn');
+        const status = document.getElementById('voice-status');
+        btn.innerHTML = '🔴 Listening...';
+        btn.style.background = 'linear-gradient(135deg, #ef4444, #dc2626)';
+        status.textContent = 'Speak now...';
+        recognition.start();
+        recognition.onresult = function(event) {
+            const transcript = event.results[0][0].transcript;
+            status.textContent = '✅ Sending: "' + transcript + '"';
+            btn.innerHTML = '🎤 Voice Input';
+            btn.style.background = 'linear-gradient(135deg, #6366f1, #8b5cf6)';
+            // Navigate parent with query param to auto-submit
+            const baseUrl = window.parent.location.pathname;
+            window.parent.location.href = baseUrl + '?voice=' + encodeURIComponent(transcript);
+        };
+        recognition.onerror = function(event) {
+            status.textContent = '❌ Error: ' + event.error;
+            btn.innerHTML = '🎤 Voice Input';
+            btn.style.background = 'linear-gradient(135deg, #6366f1, #8b5cf6)';
+        };
+        recognition.onend = function() {
+            if (!status.textContent.startsWith('✅') && !status.textContent.startsWith('❌')) {
+                status.textContent = '';
+            }
+            btn.innerHTML = '🎤 Voice Input';
+            btn.style.background = 'linear-gradient(135deg, #6366f1, #8b5cf6)';
+        };
+    }
+    </script>
+    """
+    st.components.v1.html(voice_html, height=55)
+
+    # --- Handle voice query param (direct voice command) ---
+    voice_query = st.query_params.get("voice")
+    if voice_query:
+        st.query_params.clear()
+        st.session_state.pending_followup = voice_query  # Reuse the follow-up mechanism
+
+    # Chat input — also check for pending follow-up / voice questions
     chat_input = st.chat_input("Ask EduMentor anything about your course…")
     prompt = chat_input or st.session_state.pop("pending_followup", None)
 
@@ -1022,72 +1083,6 @@ with tab_quiz:
                     if key not in seen:
                         st.markdown(f"- **{source}**, Page {page}")
                         seen.add(key)
-
-    # Voice input via Web Speech API (sidebar)
-    with st.sidebar:
-        st.divider()
-        st.markdown("##### 🎤 Voice Input")
-        st.markdown(
-            """<p style="font-size:0.85em; color:#aaa;">
-            Click the button below, speak your question, then paste it into the chat box.</p>""",
-            unsafe_allow_html=True,
-        )
-        voice_html = """
-        <div id="voice-container" style="text-align:center;">
-            <button id="voice-btn" onclick="startVoice()" style="
-                background: linear-gradient(135deg, #6366f1, #8b5cf6);
-                color: white; border: none; padding: 12px 24px;
-                border-radius: 12px; cursor: pointer; font-size: 16px;
-                width: 100%; transition: all 0.3s;">
-                🎤 Tap to Speak
-            </button>
-            <p id="voice-status" style="margin-top:8px; font-size:0.85em; color:#aaa;"></p>
-            <textarea id="voice-result" readonly style="
-                width:100%; min-height:60px; margin-top:8px;
-                background: #1a1a2e; color: #e0e0e0; border: 1px solid #333;
-                border-radius: 8px; padding: 8px; font-size: 14px;
-                display:none; resize:vertical;
-            "></textarea>
-        </div>
-        <script>
-        function startVoice() {
-            if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-                document.getElementById('voice-status').textContent = '❌ Speech not supported in this browser';
-                return;
-            }
-            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-            const recognition = new SpeechRecognition();
-            recognition.lang = 'en-US';
-            recognition.interimResults = false;
-            recognition.maxAlternatives = 1;
-            const btn = document.getElementById('voice-btn');
-            const status = document.getElementById('voice-status');
-            const result = document.getElementById('voice-result');
-            btn.textContent = '🔴 Listening...';
-            btn.style.background = 'linear-gradient(135deg, #ef4444, #dc2626)';
-            status.textContent = 'Speak now...';
-            recognition.start();
-            recognition.onresult = function(event) {
-                const transcript = event.results[0][0].transcript;
-                result.style.display = 'block';
-                result.value = transcript;
-                status.textContent = '✅ Copy the text above and paste it into the chat!';
-                btn.textContent = '🎤 Tap to Speak';
-                btn.style.background = 'linear-gradient(135deg, #6366f1, #8b5cf6)';
-            };
-            recognition.onerror = function(event) {
-                status.textContent = '❌ Error: ' + event.error;
-                btn.textContent = '🎤 Tap to Speak';
-                btn.style.background = 'linear-gradient(135deg, #6366f1, #8b5cf6)';
-            };
-            recognition.onend = function() {
-                btn.textContent = '🎤 Tap to Speak';
-                btn.style.background = 'linear-gradient(135deg, #6366f1, #8b5cf6)';
-            };
-        }
-        </script>
-        """
-        st.components.v1.html(voice_html, height=200)
 
 
 # =====================================================================
