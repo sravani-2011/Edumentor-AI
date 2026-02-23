@@ -29,8 +29,11 @@ EMBEDDING_MODEL: str = "gemini-embedding-001"   # current embedding model
 DEFAULT_TEMPERATURE: float = 0.3
 
 # ── Paths ───────────────────────────────────────────────────────────────
-CHROMA_PERSIST_DIR: str = "./chroma_store"
-HASH_CACHE_FILE: str = ".file_hashes.json"
+# Streamlit Cloud has a read-only app dir; use /tmp for writable storage
+import platform
+_IS_CLOUD = platform.system() == "Linux" and os.path.exists("/mount/src")
+CHROMA_PERSIST_DIR: str = "/tmp/chroma_store" if _IS_CLOUD else "./chroma_store"
+HASH_CACHE_FILE: str = "/tmp/.file_hashes.json" if _IS_CLOUD else ".file_hashes.json"
 
 
 def get_gemini_api_key(session_key: str = "") -> str:
