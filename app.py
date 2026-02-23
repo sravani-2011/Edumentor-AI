@@ -814,7 +814,12 @@ with tab_chat:
                         ):
                             st.markdown(chunk["content"][:500])
 
-                # Follow-up suggestions
+            # Save assistant message and compute metrics (only if answer succeeded)
+            if answer:
+                st.session_state.chat_history.append({"role": "assistant", "content": answer})
+
+            # Follow-up suggestions (OUTSIDE chat_message to enable st.rerun)
+            if answer:
                 st.markdown("---")
                 st.markdown("##### 🚀 Follow-up Questions")
                 follow_ups = [
@@ -828,10 +833,6 @@ with tab_chat:
                         if st.button(fu, key=f"followup_{idx}_{len(st.session_state.chat_history)}"):
                             st.session_state.pending_followup = fu
                             st.rerun()
-
-            # Save assistant message and compute metrics (only if answer succeeded)
-            if answer:
-                st.session_state.chat_history.append({"role": "assistant", "content": answer})
 
                 # --- Compute evaluation metrics and log ---
                 context_text = " ".join([c["content"] for c in chunks])
