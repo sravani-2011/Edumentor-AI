@@ -817,37 +817,45 @@ with tab_chat:
             # Save assistant message and compute metrics (only if answer succeeded)
             if answer:
                 st.session_state.chat_history.append({"role": "assistant", "content": answer})
-
-            # Follow-up suggestions (OUTSIDE chat_message to enable st.rerun)
-            if answer:
-                st.markdown("---")
-                st.markdown("##### 🚀 Follow-up Questions")
-                follow_ups = [
+                # Save follow-ups for persistent rendering
+                st.session_state.last_follow_ups = [
                     f"Can you explain more about {prompt[:40]}?",
                     f"What are common mistakes related to this topic?",
                     f"Give me a real-world example of this concept.",
                 ]
-                fcols = st.columns(len(follow_ups))
-                for idx, (fc, fu) in enumerate(zip(fcols, follow_ups)):
-                    with fc:
-                        if st.button(fu, key=f"followup_{idx}_{len(st.session_state.chat_history)}"):
-                            st.session_state.pending_followup = fu
-                            st.rerun()
 
-                # --- Compute evaluation metrics and log ---
-                context_text = " ".join([c["content"] for c in chunks])
-                rouge = compute_rouge_l(answer, context_text) if context_text else {"f1": 0}
-                bleu_result = compute_bleu(answer, context_text) if context_text else {"bleu": 0}
+    # --- Persistent follow-up buttons (always show for last response) ---
+    def _set_followup(question: str):
+        st.session_state.pending_followup = question
 
-                log_entry = create_log_entry(
-                    query=prompt,
-                    answer=answer,
-                    retrieval_scores=[c.get("score", 0) for c in chunks],
-                    rouge_l=rouge["f1"],
-                    bleu=bleu_result["bleu"],
-                    is_confident=is_confident,
+    if st.session_state.get("last_follow_ups"):
+        st.markdown("---")
+        st.markdown("##### 🚀 Follow-up Questions")
+        fcols = st.columns(len(st.session_state.last_follow_ups))
+        for idx, (fc, fu) in enumerate(zip(fcols, st.session_state.last_follow_ups)):
+            with fc:
+                st.button(
+                    fu,
+                    key=f"followup_{idx}_{len(st.session_state.chat_history)}",
+                    on_click=_set_followup,
+                    args=(fu,),
                 )
-                st.session_state.logs.append(log_entry)
+
+    # --- Compute evaluation metrics and log (only when a new answer was just generated) ---
+    if prompt and answer:
+        context_text = " ".join([c["content"] for c in chunks])
+        rouge = compute_rouge_l(answer, context_text) if context_text else {"f1": 0}
+        bleu_result = compute_bleu(answer, context_text) if context_text else {"bleu": 0}
+
+        log_entry = create_log_entry(
+            query=prompt,
+            answer=answer,
+            retrieval_scores=[c.get("score", 0) for c in chunks],
+            rouge_l=rouge["f1"],
+            bleu=bleu_result["bleu"],
+            is_confident=is_confident,
+        )
+        st.session_state.logs.append(log_entry)
 
 
 # =====================================================================
