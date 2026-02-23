@@ -695,8 +695,11 @@ with tab_chat:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
 
-    # Chat input
-    if prompt := st.chat_input("Ask EduMentor anything about your course…"):
+    # Chat input — also check for pending follow-up questions
+    chat_input = st.chat_input("Ask EduMentor anything about your course…")
+    prompt = chat_input or st.session_state.pop("pending_followup", None)
+
+    if prompt:
         if not resolved_key:
             st.error("Please set your Gemini API key in the Setup tab first.")
         else:
@@ -771,7 +774,7 @@ with tab_chat:
                 for idx, (fc, fu) in enumerate(zip(fcols, follow_ups)):
                     with fc:
                         if st.button(fu, key=f"followup_{idx}_{len(st.session_state.chat_history)}"):
-                            st.session_state.chat_history.append({"role": "user", "content": fu})
+                            st.session_state.pending_followup = fu
                             st.rerun()
 
             # Save assistant message and compute metrics (only if answer succeeded)
