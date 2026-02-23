@@ -61,4 +61,3 @@ def generate_flashcards(
         pass
 
     return [{"front": "Could not generate flashcards", "back": "Try again or upload more content."}]
-""", "Complexity": 5, "Description": "New module that generates study flashcards from PDF chunks using Gemini API", "EmptyFile": false, "IsArtifact": false, "Overwrite": false, "TargetFile": "C:\\Users\\devag\\.gemini\\antigravity\\scratch\\edu_mentor_ai\\tutor\\flashcards.py"}
