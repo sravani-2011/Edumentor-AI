@@ -876,12 +876,29 @@ with tab_chat:
             # Save assistant message and compute metrics (only if answer succeeded)
             if answer:
                 st.session_state.chat_history.append({"role": "assistant", "content": answer})
-                # Save follow-ups for persistent rendering
-                st.session_state.last_follow_ups = [
-                    f"Can you explain more about {prompt[:40]}?",
-                    f"What are common mistakes related to this topic?",
-                    f"Give me a real-world example of this concept.",
-                ]
+                # Generate dynamic follow-up questions using the AI
+                try:
+                    import google.generativeai as genai
+                    genai.configure(api_key=resolved_key)
+                    followup_model = genai.GenerativeModel("gemini-2.0-flash")
+                    followup_resp = followup_model.generate_content(
+                        f"Based on this Q&A, suggest exactly 3 short follow-up questions a student might ask next. "
+                        f"Return ONLY the 3 questions, one per line, no numbering, no bullets.\n\n"
+                        f"Question: {prompt}\nAnswer summary: {answer[:300]}",
+                        generation_config={"max_output_tokens": 150, "temperature": 0.7},
+                    )
+                    lines = [l.strip() for l in followup_resp.text.strip().split("\n") if l.strip()]
+                    st.session_state.last_follow_ups = lines[:3] if len(lines) >= 3 else [
+                        f"Can you explain more about {prompt[:40]}?",
+                        f"What are the practical applications of this?",
+                        f"What should I study next after this topic?",
+                    ]
+                except Exception:
+                    st.session_state.last_follow_ups = [
+                        f"Can you explain more about {prompt[:40]}?",
+                        f"What are the practical applications of this?",
+                        f"What should I study next after this topic?",
+                    ]
 
     # --- Persistent follow-up buttons (always show for last response) ---
     def _set_followup(question: str):
