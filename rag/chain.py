@@ -84,6 +84,7 @@ def get_rag_answer(
     temperature: float = DEFAULT_TEMPERATURE,
     explain_simply: bool = False,
     verbosity: int = 5,
+    language: str = "English",
 ) -> str:
     """
     Generate a tutor-style answer using retrieved context.
@@ -150,6 +151,14 @@ def get_rag_answer(
             "You may not have enough context to answer accurately. Follow your "
             "'I'm not sure' protocol: be transparent, suggest reading material, "
             "and ask a clarifying question."
+        )
+
+    # Add language instruction
+    if language != "English":
+        personalization += (
+            f"\n\n🌍 LANGUAGE REQUIREMENT: You MUST respond entirely in **{language}**. "
+            f"All section headers, explanations, bullet points, and examples should "
+            f"be in {language}. Only keep technical terms and source citations in English."
         )
 
     # Build messages

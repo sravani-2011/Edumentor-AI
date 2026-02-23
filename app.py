@@ -26,9 +26,12 @@ from rag.chain import get_rag_answer
 from tutor.personalize import LearnerProfile
 from tutor.quiz import generate_quiz
 from tutor.grader import grade_quiz
+from tutor.flashcards import generate_flashcards
+from tutor.summarizer import generate_summary
 from eval.metrics import compute_rouge_l, compute_bleu
 from eval.logger import create_log_entry, export_logs_csv, export_logs_json
 from utils.config import get_gemini_api_key, CHUNK_SIZE, CHUNK_OVERLAP, TOP_K
+import json as json_lib
 
 # ---------------------------------------------------------------------------
 # Page config
@@ -467,6 +470,9 @@ DEFAULTS = {
     "quiz_results": None,       # grading results
     "logs": [],                 # evaluation logs
     "course_id": "General",
+    "language": "English",      # response language
+    "flashcards": [],           # generated flashcards
+    "summary": "",              # generated summary
 }
 for key, default in DEFAULTS.items():
     if key not in st.session_state:
@@ -492,8 +498,8 @@ st.markdown("""
 # ---------------------------------------------------------------------------
 # Tabs
 # ---------------------------------------------------------------------------
-tab_setup, tab_chat, tab_quiz, tab_insights = st.tabs([
-    "⚙️ Setup", "💬 Chat Tutor", "📝 Practice Quiz", "📊 Insights"
+tab_setup, tab_chat, tab_quiz, tab_flash, tab_summary, tab_insights = st.tabs([
+    "⚙️ Setup", "💬 Chat Tutor", "📝 Practice Quiz", "📇 Flashcards", "📋 Summary", "📊 Insights"
 ])
 
 
@@ -618,6 +624,15 @@ with tab_setup:
         lp.goals = st.text_area("Learning Goals", value=lp.goals, height=80)
         st.session_state.learner_profile = lp
 
+        # Language selector
+        languages = ["English", "Hindi", "Telugu", "Tamil", "Kannada", "Malayalam",
+                      "Bengali", "Marathi", "Gujarati", "Spanish", "French", "German"]
+        lang_idx = languages.index(st.session_state.language) if st.session_state.language in languages else 0
+        st.session_state.language = st.selectbox(
+            "🌍 Response Language", languages, index=lang_idx,
+            help="AI will respond in this language."
+        )
+
         # Profile summary metrics
         st.divider()
         st.markdown("##### 🎯 Profile Summary")
@@ -631,6 +646,42 @@ with tab_setup:
         if lp.quiz_scores:
             latest = lp.quiz_scores[-1]
             st.info(f"📊 Last quiz: {latest['percentage']}% on *{latest['concept']}*")
+
+        # Progress tracking (save / load)
+        st.divider()
+        st.markdown("##### 💾 Progress Tracking")
+        prog_col1, prog_col2 = st.columns(2)
+        with prog_col1:
+            progress_data = {
+                "name": lp.name, "course": lp.course,
+                "skill_level": lp.skill_level, "goals": lp.goals,
+                "concepts_asked": lp.concepts_asked,
+                "quiz_scores": lp.quiz_scores,
+                "language": st.session_state.language,
+            }
+            st.download_button(
+                "📥 Download Progress",
+                data=json_lib.dumps(progress_data, indent=2),
+                file_name="edumentor_progress.json",
+                mime="application/json",
+                use_container_width=True,
+            )
+        with prog_col2:
+            uploaded_progress = st.file_uploader("📤 Upload Progress", type=["json"], key="progress_upload")
+            if uploaded_progress:
+                try:
+                    loaded = json_lib.loads(uploaded_progress.read())
+                    lp.name = loaded.get("name", lp.name)
+                    lp.course = loaded.get("course", lp.course)
+                    lp.skill_level = loaded.get("skill_level", lp.skill_level)
+                    lp.goals = loaded.get("goals", lp.goals)
+                    lp.concepts_asked = loaded.get("concepts_asked", [])
+                    lp.quiz_scores = loaded.get("quiz_scores", [])
+                    st.session_state.language = loaded.get("language", "English")
+                    st.session_state.learner_profile = lp
+                    st.success("✅ Progress restored!")
+                except Exception:
+                    st.error("Invalid progress file.")
 
         # Feature showcase
         st.divider()
@@ -738,6 +789,7 @@ with tab_chat:
                             temperature=temperature,
                             explain_simply=explain_simply,
                             verbosity=verbosity,
+                            language=st.session_state.language,
                         )
                     except Exception as e:
                         answer = None
@@ -952,9 +1004,162 @@ with tab_quiz:
                         st.markdown(f"- **{source}**, Page {page}")
                         seen.add(key)
 
+    # Voice input via Web Speech API (sidebar)
+    with st.sidebar:
+        st.divider()
+        st.markdown("##### 🎤 Voice Input")
+        st.markdown(
+            """<p style="font-size:0.85em; color:#aaa;">
+            Click the button below, speak your question, then paste it into the chat box.</p>""",
+            unsafe_allow_html=True,
+        )
+        voice_html = """
+        <div id="voice-container" style="text-align:center;">
+            <button id="voice-btn" onclick="startVoice()" style="
+                background: linear-gradient(135deg, #6366f1, #8b5cf6);
+                color: white; border: none; padding: 12px 24px;
+                border-radius: 12px; cursor: pointer; font-size: 16px;
+                width: 100%; transition: all 0.3s;">
+                🎤 Tap to Speak
+            </button>
+            <p id="voice-status" style="margin-top:8px; font-size:0.85em; color:#aaa;"></p>
+            <textarea id="voice-result" readonly style="
+                width:100%; min-height:60px; margin-top:8px;
+                background: #1a1a2e; color: #e0e0e0; border: 1px solid #333;
+                border-radius: 8px; padding: 8px; font-size: 14px;
+                display:none; resize:vertical;
+            "></textarea>
+        </div>
+        <script>
+        function startVoice() {
+            if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+                document.getElementById('voice-status').textContent = '❌ Speech not supported in this browser';
+                return;
+            }
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            const recognition = new SpeechRecognition();
+            recognition.lang = 'en-US';
+            recognition.interimResults = false;
+            recognition.maxAlternatives = 1;
+            const btn = document.getElementById('voice-btn');
+            const status = document.getElementById('voice-status');
+            const result = document.getElementById('voice-result');
+            btn.textContent = '🔴 Listening...';
+            btn.style.background = 'linear-gradient(135deg, #ef4444, #dc2626)';
+            status.textContent = 'Speak now...';
+            recognition.start();
+            recognition.onresult = function(event) {
+                const transcript = event.results[0][0].transcript;
+                result.style.display = 'block';
+                result.value = transcript;
+                status.textContent = '✅ Copy the text above and paste it into the chat!';
+                btn.textContent = '🎤 Tap to Speak';
+                btn.style.background = 'linear-gradient(135deg, #6366f1, #8b5cf6)';
+            };
+            recognition.onerror = function(event) {
+                status.textContent = '❌ Error: ' + event.error;
+                btn.textContent = '🎤 Tap to Speak';
+                btn.style.background = 'linear-gradient(135deg, #6366f1, #8b5cf6)';
+            };
+            recognition.onend = function() {
+                btn.textContent = '🎤 Tap to Speak';
+                btn.style.background = 'linear-gradient(135deg, #6366f1, #8b5cf6)';
+            };
+        }
+        </script>
+        """
+        st.components.v1.html(voice_html, height=200)
+
 
 # =====================================================================
-# TAB 4 – INSIGHTS
+# TAB 4 – FLASHCARDS
+# =====================================================================
+with tab_flash:
+    st.markdown("""
+    <div class="section-card">
+        <h3>📇 Flashcard Generator</h3>
+        <p>Auto-generate study flashcards from your uploaded PDFs. Click a card to reveal the answer!</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    resolved_key = get_gemini_api_key(st.session_state.api_key)
+
+    if not resolved_key:
+        st.warning("🔑 Please set your API key in the Setup tab first.")
+    elif not st.session_state.last_chunks:
+        st.info("💬 Ask at least one question in Chat Tutor first, so EduMentor has context for flashcards.")
+    else:
+        fc_col1, fc_col2 = st.columns([2, 1])
+        with fc_col1:
+            num_cards = st.slider("Number of flashcards", 5, 20, 10)
+        with fc_col2:
+            if st.button("🃏 Generate Flashcards", use_container_width=True):
+                with st.spinner("Creating flashcards..."):
+                    try:
+                        cards = generate_flashcards(
+                            chunks=st.session_state.last_chunks,
+                            api_key=resolved_key,
+                            count=num_cards,
+                        )
+                        st.session_state.flashcards = cards
+                    except Exception as e:
+                        st.error(f"Error generating flashcards: {e}")
+
+    if st.session_state.flashcards:
+        st.markdown(f"##### 📇 {len(st.session_state.flashcards)} Flashcards Generated")
+        for i, card in enumerate(st.session_state.flashcards):
+            with st.expander(f"🃏 Card {i+1}: {card.get('front', 'Question')[:80]}"):
+                st.markdown(f"**❓ Question:**\n{card.get('front', 'N/A')}")
+                st.divider()
+                st.markdown(f"**✅ Answer:**\n{card.get('back', 'N/A')}")
+
+
+# =====================================================================
+# TAB 5 – SUMMARY
+# =====================================================================
+with tab_summary:
+    st.markdown("""
+    <div class="section-card">
+        <h3>📋 PDF Summary Generator</h3>
+        <p>Get a comprehensive, structured summary of your uploaded study material in one click.</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    resolved_key = get_gemini_api_key(st.session_state.api_key)
+
+    if not resolved_key:
+        st.warning("🔑 Please set your API key in the Setup tab first.")
+    elif not st.session_state.last_chunks:
+        st.info("💬 Ask at least one question in Chat Tutor first to build context for the summary.")
+    else:
+        sum_col1, sum_col2 = st.columns([2, 1])
+        with sum_col2:
+            if st.button("📋 Generate Summary", use_container_width=True):
+                with st.spinner("Generating summary... this may take a moment."):
+                    try:
+                        summary = generate_summary(
+                            chunks=st.session_state.last_chunks,
+                            api_key=resolved_key,
+                            language=st.session_state.language,
+                        )
+                        st.session_state.summary = summary
+                    except Exception as e:
+                        st.error(f"Error generating summary: {e}")
+
+    if st.session_state.summary:
+        st.markdown(st.session_state.summary)
+        st.divider()
+        st.download_button(
+            "📥 Download Summary",
+            data=st.session_state.summary,
+            file_name="edumentor_summary.md",
+            mime="text/markdown",
+            use_container_width=True,
+        )
+
+
+# =====================================================================
+# TAB 6 – INSIGHTS
 # =====================================================================
 with tab_insights:
     st.markdown("""
