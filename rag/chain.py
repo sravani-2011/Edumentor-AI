@@ -8,6 +8,8 @@ and adaptive explanation style.
 
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import SystemMessage, HumanMessage
+import base64
+from typing import Optional
 
 from utils.config import CHAT_MODEL, DEFAULT_TEMPERATURE
 
@@ -85,6 +87,8 @@ def get_rag_answer(
     explain_simply: bool = False,
     verbosity: int = 5,
     language: str = "English",
+    image_bytes: Optional[bytes] = None,
+    image_mime: str = "image/jpeg",
 ) -> str:
     """
     Generate a tutor-style answer using retrieved context.
@@ -164,16 +168,28 @@ def get_rag_answer(
     # Build messages
     system_msg = SystemMessage(content=SYSTEM_PROMPT.format(personalization_rules=personalization))
     context_str = build_context_string(chunks)
-    human_msg = HumanMessage(
-        content=RAG_ANSWER_TEMPLATE.format(
-            learner_name=learner_profile.get("name", "Learner"),
-            skill_level=skill,
-            course=learner_profile.get("course", "General"),
-            goals=learner_profile.get("goals", "Learn and understand"),
-            context=context_str,
-            question=question,
-        )
+    
+    # Build human message content (text + optional image)
+    text_content = RAG_ANSWER_TEMPLATE.format(
+        learner_name=learner_profile.get("name", "Learner"),
+        skill_level=skill,
+        course=learner_profile.get("course", "General"),
+        goals=learner_profile.get("goals", "Learn and understand"),
+        context=context_str,
+        question=question,
     )
+
+    if image_bytes:
+        # Build multi-part content
+        b64_img = base64.b64encode(image_bytes).decode("utf-8")
+        human_msg = HumanMessage(
+            content=[
+                {"type": "text", "text": text_content},
+                {"type": "image_url", "image_url": {"url": f"data:{image_mime};base64,{b64_img}"}}
+            ]
+        )
+    else:
+        human_msg = HumanMessage(content=text_content)
 
     llm = ChatGoogleGenerativeAI(
         model=CHAT_MODEL,

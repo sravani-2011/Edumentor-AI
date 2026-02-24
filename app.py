@@ -11,7 +11,7 @@ A 4-tab application providing:
 """
 
 import streamlit as st
-import os, sys
+import os, sys, time
 
 # ---------------------------------------------------------------------------
 # Ensure project root is on the Python path
@@ -37,9 +37,14 @@ from tools.blog_summarizer import summarize_blog
 from tools.mindmap import generate_mindmap, generate_concept_tree
 from tools.audio_summarizer import summarize_audio
 from tools.coding_challenge import generate_coding_challenge, evaluate_solution
+from tools.visual_explainer import generate_visual_explanation
+from tools.expert_mentor import get_mentor_guidance
+from tools.problem_bank import get_curated_problems
 import json as json_lib
 import plotly.graph_objects as go
 import plotly.express as px
+import pandas as pd
+import google.generativeai as genai
 
 # ---------------------------------------------------------------------------
 # Page config
@@ -52,240 +57,184 @@ st.set_page_config(
 )
 
 # ---------------------------------------------------------------------------
-# ✨ PREMIUM DARK-THEME CSS — Minor Project Showcase Edition
+# ✨ PREMIUM MIDNIGHT GOLD CSS — Minor Project Showcase Edition
 # ---------------------------------------------------------------------------
 st.markdown("""
 <style>
     /* ── Fonts ─────────────────────────────────────────── */
-    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+    
     html, body, [class*="css"] {
         font-family: 'Plus Jakarta Sans', sans-serif;
     }
+    
+    h1, h2, h3, .hero-title {
+        font-family: 'Fraunces', serif;
+    }
 
-    /* ── Dark theme base ──────────────────────────────── */
+    /* ── Deep Charcoal Base ────────────────────────────── */
     .stApp {
-        background: linear-gradient(160deg, #0f0c29 0%, #1a1a3e 40%, #24243e 100%);
+        background: #0a0a0c;
+        background-image: 
+            radial-gradient(circle at 20% 30%, rgba(212, 175, 55, 0.03) 0%, transparent 40%),
+            radial-gradient(circle at 80% 70%, rgba(212, 175, 55, 0.02) 0%, transparent 40%);
         color: #e0e0e0;
     }
     .stApp > header { background: transparent !important; }
 
-    /* ── Animated hero header ─────────────────────────── */
-    @keyframes gradientFlow {
-        0%   { background-position: 0% 50%; }
-        50%  { background-position: 100% 50%; }
-        100% { background-position: 0% 50%; }
-    }
-    @keyframes float {
-        0%, 100% { transform: translateY(0); }
-        50%      { transform: translateY(-6px); }
-    }
-    @keyframes shimmer {
-        0%   { left: -100%; }
-        100% { left: 200%; }
+    /* ── Classy Hero Header ───────────────────────────── */
+    @keyframes subtleReveal {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
     }
     .hero {
-        background: linear-gradient(-45deg, #667eea, #764ba2, #f093fb, #4facfe, #43e97b);
-        background-size: 400% 400%;
-        animation: gradientFlow 10s ease infinite;
-        padding: 2.5rem 2.8rem;
-        border-radius: 20px;
-        margin-bottom: 2rem;
-        color: white;
-        box-shadow: 0 12px 40px rgba(102, 126, 234, 0.4), 0 0 80px rgba(118, 75, 162, 0.15);
+        background: rgba(255, 255, 255, 0.02);
+        border: 1px solid rgba(212, 175, 55, 0.15);
+        backdrop-filter: blur(20px);
+        padding: 3rem 2.8rem;
+        border-radius: 24px;
+        margin-bottom: 2.5rem;
+        color: #f8f8f8;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
         position: relative;
-        overflow: hidden;
+        animation: subtleReveal 1.2s ease-out;
     }
-    .hero::before {
+    .hero::after {
         content: '';
         position: absolute;
-        top: 0; left: -100%;
-        width: 60%; height: 100%;
-        background: linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent);
-        animation: shimmer 4s ease-in-out infinite;
+        top: 0; right: 0;
+        width: 150px; height: 150px;
+        background: radial-gradient(circle, rgba(212,175,55,0.05) 0%, transparent 70%);
+        border-radius: 50%;
     }
     .hero-icon {
-        font-size: 2.8rem;
-        animation: float 3s ease-in-out infinite;
+        font-size: 3rem;
+        margin-bottom: 1rem;
         display: inline-block;
+        filter: drop-shadow(0 0 10px rgba(212,175,55,0.2));
     }
     .hero h1 {
-        margin: 0.3rem 0 0 0;
-        font-size: 2.4rem;
+        margin: 0;
+        font-size: 2.8rem;
         font-weight: 800;
-        letter-spacing: -0.03em;
-        text-shadow: 0 2px 12px rgba(0,0,0,0.2);
+        letter-spacing: -0.01em;
+        background: linear-gradient(135deg, #f8f8f8 30%, #d4af37 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
     }
     .hero .tagline {
-        margin: 0.5rem 0 0 0;
-        opacity: 0.9;
-        font-size: 1rem;
-        font-weight: 500;
-        letter-spacing: 0.01em;
+        margin: 0.8rem 0 0 0;
+        color: #b0b0b0;
+        font-size: 1.1rem;
+        font-weight: 400;
+        font-family: 'Plus Jakarta Sans', sans-serif;
     }
     .hero .badges {
         display: flex;
-        gap: 0.6rem;
-        margin-top: 1rem;
+        gap: 0.8rem;
+        margin-top: 1.5rem;
         flex-wrap: wrap;
     }
     .hero .badge {
-        background: rgba(255,255,255,0.15);
-        backdrop-filter: blur(8px);
-        padding: 0.3rem 0.9rem;
-        border-radius: 50px;
-        font-size: 0.72rem;
+        background: rgba(212, 175, 55, 0.08);
+        padding: 0.4rem 1rem;
+        border-radius: 8px;
+        font-size: 0.75rem;
         font-weight: 600;
-        letter-spacing: 0.04em;
-        text-transform: uppercase;
-        border: 1px solid rgba(255,255,255,0.2);
+        color: #d4af37;
+        border: 1px solid rgba(212, 175, 55, 0.2);
+        letter-spacing: 0.02em;
     }
 
     /* ── Section cards ────────────────────────────────── */
     .section-card {
-        background: rgba(255, 255, 255, 0.04);
-        backdrop-filter: blur(16px);
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        border-radius: 16px;
-        padding: 1.6rem 1.8rem;
-        margin-bottom: 1.2rem;
-        transition: border-color 0.3s ease, box-shadow 0.3s ease;
+        background: rgba(255, 255, 255, 0.02);
+        backdrop-filter: blur(24px);
+        border: 1px solid rgba(255, 255, 255, 0.04);
+        border-radius: 20px;
+        padding: 2rem;
+        margin-bottom: 1.5rem;
+        transition: all 0.4s cubic-bezier(0.165, 0.84, 0.44, 1);
     }
     .section-card:hover {
-        border-color: rgba(102, 126, 234, 0.3);
-        box-shadow: 0 0 30px rgba(102, 126, 234, 0.08);
+        border-color: rgba(212, 175, 55, 0.2);
+        background: rgba(255, 255, 255, 0.03);
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
     }
     .section-card h3 {
-        margin: 0 0 0.8rem 0;
-        font-size: 1.15rem;
+        margin: 0 0 1rem 0;
+        font-size: 1.4rem;
         font-weight: 700;
-        color: #b8c5ff;
+        color: #ffffff;
     }
 
-    /* ── Tab bar ──────────────────────────────────────── */
+    /* ── Tab Bar (Minimalist) ─────────────────────────── */
     .stTabs [data-baseweb="tab-list"] {
-        gap: 6px;
-        background: rgba(255,255,255,0.03);
-        padding: 8px;
-        border-radius: 16px;
-        border: 1px solid rgba(255,255,255,0.06);
+        gap: 12px;
+        background: rgba(255,255,255,0.01);
+        padding: 10px;
+        border-radius: 14px;
+        border: 1px solid rgba(255,255,255,0.03);
     }
     .stTabs [data-baseweb="tab"] {
-        padding: 12px 24px;
-        border-radius: 12px;
-        font-weight: 600;
-        font-size: 0.9rem;
-        color: #a0a0c0 !important;
+        padding: 10px 20px;
+        border-radius: 10px;
+        font-weight: 500;
+        font-size: 0.95rem;
+        color: #808080 !important;
         transition: all 0.3s ease;
     }
-    .stTabs [data-baseweb="tab"]:hover {
-        background: rgba(102, 126, 234, 0.1);
-        color: #c5cafe !important;
-    }
     .stTabs [aria-selected="true"] {
-        background: linear-gradient(135deg, #667eea, #764ba2) !important;
-        color: #ffffff !important;
-        box-shadow: 0 4px 16px rgba(102, 126, 234, 0.35);
-    }
-    /* tab panel text color */
-    .stTabs [data-baseweb="tab-panel"] {
-        color: #e0e0e0;
+        background: rgba(212, 175, 55, 0.12) !important;
+        color: #d4af37 !important;
+        border: 1px solid rgba(212, 175, 55, 0.3) !important;
     }
 
-    /* ── Buttons ──────────────────────────────────────── */
+    /* ── Classy Buttons ───────────────────────────────── */
     .stButton > button {
-        background: linear-gradient(135deg, #667eea, #764ba2) !important;
-        color: white !important;
-        border: none !important;
-        border-radius: 12px;
+        background: linear-gradient(135deg, #1a1a1c 0%, #0a0a0c 100%) !important;
+        color: #d4af37 !important;
+        border: 1px solid rgba(212, 175, 55, 0.4) !important;
+        border-radius: 10px;
         font-weight: 600;
-        padding: 0.6rem 1.4rem;
-        transition: all 0.25s ease;
-        box-shadow: 0 4px 14px rgba(102, 126, 234, 0.3);
+        letter-spacing: 0.03em;
+        padding: 0.7rem 1.8rem;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.4);
     }
     .stButton > button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 6px 24px rgba(102, 126, 234, 0.45);
-        background: linear-gradient(135deg, #7b93f5, #8b5dc5) !important;
-    }
-    .stButton > button:active {
-        transform: translateY(0);
+        background: #d4af37 !important;
+        color: #0a0a0c !important;
+        box-shadow: 0 0 25px rgba(212, 175, 55, 0.3);
     }
 
     /* ── Inputs ───────────────────────────────────────── */
     .stTextInput > div > div > input,
     .stTextArea > div > div > textarea {
-        background: rgba(255,255,255,0.05) !important;
-        border: 1.5px solid rgba(255,255,255,0.1) !important;
-        border-radius: 12px;
+        background: #121214 !important;
+        border: 1px solid rgba(255,255,255,0.05) !important;
+        border-radius: 10px;
         color: #e0e0e0 !important;
-        transition: all 0.2s ease;
+        padding: 12px;
     }
     .stTextInput > div > div > input:focus,
     .stTextArea > div > div > textarea:focus {
-        border-color: #667eea !important;
-        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.15) !important;
-    }
-    .stTextInput > div > div > input::placeholder,
-    .stTextArea > div > div > textarea::placeholder {
-        color: #666688 !important;
-    }
-    /* Labels */
-    .stTextInput > label, .stTextArea > label, .stSelectbox > label,
-    .stFileUploader > label, .stSlider > label, .stRadio > label {
-        color: #b0b0d0 !important;
-        font-weight: 600;
+        border-color: #d4af37 !important;
+        box-shadow: 0 0 0 2px rgba(212, 175, 55, 0.1) !important;
     }
 
-    /* ── Selectbox ────────────────────────────────────── */
-    .stSelectbox > div > div {
-        background: rgba(255,255,255,0.05) !important;
-        border: 1.5px solid rgba(255,255,255,0.1) !important;
-        border-radius: 12px;
-        color: #e0e0e0 !important;
-    }
-
-    /* ── Chat messages ────────────────────────────────── */
-    .stChatMessage {
-        background: rgba(255,255,255,0.03) !important;
-        border: 1px solid rgba(255,255,255,0.06);
-        border-radius: 16px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-    }
-
-    /* ── File uploader ────────────────────────────────── */
-    .stFileUploader > div > div {
-        background: rgba(255,255,255,0.03) !important;
-        border: 2px dashed rgba(102, 126, 234, 0.3) !important;
-        border-radius: 14px;
-    }
-    .stFileUploader > div > div:hover {
-        border-color: rgba(102, 126, 234, 0.5) !important;
-    }
-
-    /* ── Metric cards (Insights) ──────────────────────── */
+    /* Metric Cards */
     .metric-card {
-        background: rgba(255,255,255,0.04);
-        backdrop-filter: blur(12px);
-        border: 1px solid rgba(255,255,255,0.08);
-        padding: 1.5rem 1rem;
+        background: rgba(255,255,255,0.01);
+        border: 1px solid rgba(212,175,55,0.1);
+        padding: 1.8rem;
         border-radius: 16px;
         text-align: center;
-        margin-bottom: 0.8rem;
-        transition: all 0.3s ease;
-    }
-    .metric-card:hover {
-        transform: translateY(-4px);
-        border-color: rgba(102, 126, 234, 0.3);
-        box-shadow: 0 8px 32px rgba(102, 126, 234, 0.12);
     }
     .metric-card h3 {
+        font-size: 2.2rem;
+        color: #d4af37;
         margin: 0;
-        font-size: 2rem;
-        font-weight: 800;
-        background: linear-gradient(135deg, #667eea, #f093fb);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        background-clip: text;
     }
     .metric-card p {
         margin: 0.3rem 0 0 0;
@@ -299,7 +248,7 @@ st.markdown("""
     /* ── Expanders ─────────────────────────────────────── */
     .streamlit-expanderHeader {
         font-weight: 600;
-        color: #b8c5ff !important;
+        color: #d4af37 !important;
     }
     details {
         background: rgba(255,255,255,0.02);
@@ -351,7 +300,7 @@ st.markdown("""
     .feature-item p {
         margin: 0;
         font-size: 0.8rem;
-        color: #8888aa;
+        color: #888888;
         line-height: 1.4;
     }
 
@@ -378,11 +327,11 @@ st.markdown("""
 
     /* ── Sidebar ──────────────────────────────────────── */
     section[data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #13112b 0%, #1a1840 100%) !important;
-        border-right: 1px solid rgba(255,255,255,0.06);
+        background: linear-gradient(180deg, #0a0a0c 0%, #16161a 100%) !important;
+        border-right: 1px solid rgba(212,175,55,0.1);
     }
     section[data-testid="stSidebar"] * {
-        color: #c5cafe !important;
+        color: #d1d1d1 !important;
     }
     section[data-testid="stSidebar"] label,
     section[data-testid="stSidebar"] .stMarkdown p,
@@ -390,24 +339,24 @@ st.markdown("""
     section[data-testid="stSidebar"] .stMarkdown h2,
     section[data-testid="stSidebar"] .stMarkdown h3,
     section[data-testid="stSidebar"] span {
-        color: #c5cafe !important;
+        color: #d1d1d1 !important;
     }
 
     /* ── Streamlit metrics override ───────────────────── */
     [data-testid="stMetric"] {
-        background: rgba(255,255,255,0.03);
-        border: 1px solid rgba(255,255,255,0.06);
+        background: rgba(255,255,255,0.02);
+        border: 1px solid rgba(212,175,55,0.1);
         border-radius: 14px;
         padding: 1rem;
     }
-    [data-testid="stMetricLabel"] { color: #8888aa !important; }
-    [data-testid="stMetricValue"] { color: #b8c5ff !important; }
+    [data-testid="stMetricLabel"] { color: #888888 !important; }
+    [data-testid="stMetricValue"] { color: #d4af37 !important; }
 
     /* ── Dividers ──────────────────────────────────────── */
     hr {
         border: none;
         height: 1px;
-        background: linear-gradient(90deg, transparent, rgba(102,126,234,0.3), transparent);
+        background: linear-gradient(90deg, transparent, rgba(212,175,55,0.15), transparent);
     }
 
     /* ── Alerts / info boxes ──────────────────────────── */
@@ -418,7 +367,7 @@ st.markdown("""
 
     /* ── Subheaders ───────────────────────────────────── */
     .stApp h1, .stApp h2, .stApp h3, .stApp h4, .stApp h5 {
-        color: #d0d0f0 !important;
+        color: #e0e0e0 !important;
     }
 
     /* ── Dataframe ────────────────────────────────────── */
@@ -437,21 +386,21 @@ st.markdown("""
 
     /* ── Download buttons ─────────────────────────────── */
     .stDownloadButton > button {
-        background: rgba(102, 126, 234, 0.15) !important;
-        border: 1px solid rgba(102, 126, 234, 0.3) !important;
-        color: #b8c5ff !important;
+        background: rgba(212,175,55,0.08) !important;
+        border: 1px solid rgba(212,175,55,0.2) !important;
+        color: #d4af37 !important;
     }
     .stDownloadButton > button:hover {
-        background: rgba(102, 126, 234, 0.25) !important;
-        box-shadow: 0 4px 16px rgba(102, 126, 234, 0.2);
+        background: rgba(212,175,55,0.15) !important;
+        box-shadow: 0 4px 16px rgba(212, 175, 55, 0.15);
     }
 
     /* ── Radio buttons ────────────────────────────────── */
-    .stRadio > div { color: #c5cafe !important; }
-    .stRadio label span { color: #c5cafe !important; }
+    .stRadio > div { color: #d1d1d1 !important; }
+    .stRadio label span { color: #d1d1d1 !important; }
 
     /* ── Caption text ─────────────────────────────────── */
-    .stCaption, small { color: #7777a0 !important; }
+    .stCaption, small { color: #888888 !important; }
 
     /* ── Chat input ───────────────────────────────────── */
     .stChatInput > div {
@@ -462,6 +411,17 @@ st.markdown("""
     .stChatInput textarea {
         color: #e0e0e0 !important;
     }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes slideLeft { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
+.step-card {
+    background: #16161a;
+    padding: 15px;
+    border-left: 4px solid #d4af37;
+    margin-bottom: 10px;
+    border-radius: 4px;
+}
+.fade-in { animation: fadeIn 0.8s ease-out forwards; }
+.slide-left { animation: slideLeft 0.8s ease-out forwards; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -485,6 +445,8 @@ DEFAULTS = {
     "username": "",             # current user
     "current_challenge": None,  # active coding challenge
     "challenge_start": None,    # challenge timer start
+    "mentor_history": [],       # Expert Mentor chat history
+    "visual_explain": None,     # current visual explanation data
 }
 for key, default in DEFAULTS.items():
     if key not in st.session_state:
@@ -555,10 +517,10 @@ st.markdown(f"""
 # Tabs
 # ---------------------------------------------------------------------------
 (tab_setup, tab_chat, tab_quiz, tab_code, tab_flash, tab_summary,
- tab_video, tab_blog, tab_mindmap, tab_audio, tab_leader, tab_insights) = st.tabs([
-    "⚙️ Setup", "💬 Chat Tutor", "📝 Quiz", "🏆 Code Challenge",
+ tab_video, tab_blog, tab_mindmap, tab_audio, tab_visual, tab_leader, tab_insights) = st.tabs([
+    "⚙️ Setup", "💬 Chat Tutor", "📝 Quiz", "🏆 CP Hub",
     "📇 Flashcards", "📋 Summary", "🎥 Video", "📰 Blog",
-    "🧠 Mind Map", "🎧 Audio", "🏅 Leaderboard", "📊 Insights",
+    "🧠 Mind Map", "🎧 Audio", "🎨 Visual Explainer", "🏅 Leaderboard", "📊 Insights",
 ])
 
 
@@ -853,7 +815,7 @@ with tab_chat:
         const status = document.getElementById('voice-status');
         const result = document.getElementById('voice-result');
         btn.innerHTML = '🔴 Listening...';
-        btn.style.background = 'linear-gradient(135deg, #ef4444, #dc2626)';
+        btn.style.background = 'linear-gradient(135deg, #ef4444, #b91c1c)';
         status.textContent = 'Speak now...';
         recognition.start();
         recognition.onresult = function(event) {
@@ -863,16 +825,19 @@ with tab_chat:
             result.select();
             status.textContent = '✅ Copy the text above and paste into the chat!';
             btn.innerHTML = '🎤 Tap to Speak';
-            btn.style.background = 'linear-gradient(135deg, #6366f1, #8b5cf6)';
+            btn.style.background = '#d4af37';
+            btn.style.color = '#0a0a0c';
         };
         recognition.onerror = function(event) {
             status.textContent = '❌ Error: ' + event.error;
             btn.innerHTML = '🎤 Tap to Speak';
-            btn.style.background = 'linear-gradient(135deg, #6366f1, #8b5cf6)';
+            btn.style.background = '#d4af37';
+            btn.style.color = '#0a0a0c';
         };
         recognition.onend = function() {
             btn.innerHTML = '🎤 Tap to Speak';
-            btn.style.background = 'linear-gradient(135deg, #6366f1, #8b5cf6)';
+            btn.style.background = '#d4af37';
+            btn.style.color = '#0a0a0c';
         };
     }
     </script>
@@ -913,6 +878,13 @@ with tab_chat:
 
                     # Generate answer
                     try:
+                        # Handle multi-modal image input if available
+                        img_bytes = None
+                        img_type = "image/jpeg"
+                        if uploaded_img:
+                            img_bytes = uploaded_img.getvalue()
+                            img_type = uploaded_img.type
+
                         answer = get_rag_answer(
                             question=prompt,
                             chunks=chunks,
@@ -923,6 +895,8 @@ with tab_chat:
                             explain_simply=explain_simply,
                             verbosity=verbosity,
                             language=st.session_state.language,
+                            image_bytes=img_bytes,
+                            image_mime=img_type,
                         )
                     except Exception as e:
                         answer = None
@@ -952,7 +926,6 @@ with tab_chat:
                 st.session_state.chat_history.append({"role": "assistant", "content": answer})
                 # Generate dynamic follow-up questions using the AI
                 try:
-                    import google.generativeai as genai
                     genai.configure(api_key=resolved_key)
                     followup_model = genai.GenerativeModel("gemini-2.0-flash")
                     followup_resp = followup_model.generate_content(
@@ -1262,13 +1235,14 @@ with tab_summary:
 
 
 # =====================================================================
-# TAB 6 – CODE CHALLENGE (Timed Coding)
+# =====================================================================
+# TAB 6 – COMPETITIVE PROGRAMMING HUB (Timed)
 # =====================================================================
 with tab_code:
     st.markdown("""
     <div class="section-card">
-        <h3>🏆 Timed Coding Challenge</h3>
-        <p>Test your coding skills with AI-generated challenges based on your study material!</p>
+        <h3>🏆 Competitive Programming Hub</h3>
+        <p>Master coding with curated standard problems or AI-generated challenges from your material!</p>
     </div>
     """, unsafe_allow_html=True)
 
@@ -1276,94 +1250,116 @@ with tab_code:
 
     if not resolved_key:
         st.warning("🔑 Please set your API key in the Setup tab first.")
-    elif not st.session_state.last_chunks:
-        st.info("💬 Ask at least one question in Chat Tutor first to generate challenges from your material.")
     else:
-        cc1, cc2 = st.columns(2)
-        with cc1:
-            ch_difficulty = st.selectbox("Difficulty", ["Easy", "Medium", "Hard"], index=1, key="ch_diff")
-        with cc2:
-            ch_lang = st.selectbox("Language", ["Python", "JavaScript", "Java", "C++", "C"], key="ch_lang")
+        # --- Problem Source Selector ---
+        source_opt = st.radio("Choose Program Source:", ["AI Generated (From My Docs)", "Curated Problem Bank"], horizontal=True)
 
-        if st.button("🎯 Generate Challenge", use_container_width=True):
-            with st.spinner("Generating coding challenge..."):
-                challenge = generate_coding_challenge(
-                    chunks=st.session_state.last_chunks,
-                    api_key=resolved_key,
-                    difficulty=ch_difficulty,
-                    language=ch_lang,
-                )
-                if "error" in challenge:
-                    st.error(challenge["error"])
-                else:
-                    st.session_state.current_challenge = challenge
-                    import time
+        if source_opt == "AI Generated (From My Docs)":
+            if not st.session_state.last_chunks:
+                st.info("💬 Ask a question in Chat Tutor first to generate challenges from your material.")
+            else:
+                cc1, cc2 = st.columns(2)
+                with cc1:
+                    ch_difficulty = st.selectbox("Difficulty", ["Easy", "Medium", "Hard"], index=1, key="ai_ch_diff")
+                with cc2:
+                    ch_lang = st.selectbox("Language", ["Python", "JavaScript", "Java", "C++", "C"], key="ai_ch_lang")
+                
+                if st.button("🚀 Generate AI Challenge", use_container_width=True):
+                    with st.spinner("Generating coding challenge..."):
+                        challenge = generate_coding_challenge(st.session_state.last_chunks, resolved_key, ch_difficulty, ch_lang)
+                        if "error" in challenge: st.error(challenge["error"])
+                        else:
+                            st.session_state.current_challenge = challenge
+                            st.session_state.challenge_start = time.time()
+                            st.session_state.mentor_history = []
+                            st.rerun()
+
+        else:
+            # Curated Bank selection
+            cb1, cb2 = st.columns(2)
+            with cb1:
+                cur_cat = st.selectbox("Category", ["Python", "Java", "DSA"], key="cur_cat")
+            
+            problems = get_curated_problems(cur_cat)
+            with cb2:
+                problem_titles = [p["title"] for p in problems]
+                selected_title = st.selectbox("Select Problem", problem_titles)
+            
+            if st.button("🎯 Start Curated Challenge", use_container_width=True):
+                selected_p = next((p for p in problems if p["title"] == selected_title), None)
+                if selected_p:
+                    st.session_state.current_challenge = selected_p
                     st.session_state.challenge_start = time.time()
+                    st.session_state.mentor_history = []
+                    st.rerun()
 
+        # --- Challenge Rendering ---
         if st.session_state.current_challenge:
             ch = st.session_state.current_challenge
-            st.markdown(f"### 📌 {ch.get('title', 'Coding Challenge')}")
-            st.markdown(f"**Difficulty:** {ch.get('difficulty', 'Medium')} | "
-                       f"**Time Limit:** {ch.get('time_limit', 30)} min | "
-                       f"**Max Score:** {ch.get('max_score', 20)} pts")
+            st.divider()
+            
+            # Header info
+            h1, h2, h3 = st.columns(3)
+            h1.metric("Difficulty", ch.get('difficulty', 'Medium'))
+            h2.metric("Level", ch.get('level', 'N/A'))
+            h3.metric("Goal", f"{ch.get('time_limit', 30)} min")
 
-            # Timer display
+            # Timer
             if st.session_state.challenge_start:
-                import time
                 elapsed = int(time.time() - st.session_state.challenge_start)
-                time_limit_sec = ch.get("time_limit", 30) * 60
-                remaining = max(0, time_limit_sec - elapsed)
-                mins, secs = divmod(remaining, 60)
-                color = "#ef4444" if remaining < 120 else "#22c55e"
-                st.markdown(f'<p style="font-size:1.3em; color:{color};">⏱️ Time Remaining: '
-                           f'<b>{mins:02d}:{secs:02d}</b></p>', unsafe_allow_html=True)
+                limit_sec = ch.get("time_limit", 30) * 60
+                rem = max(0, limit_sec - elapsed)
+                m, s = divmod(rem, 60)
+                t_color = "#ef4444" if rem < 120 else "#22c55e"
+                st.markdown(f'<div style="text-align:center; font-size:2em; color:{t_color}; padding:10px; border:2px solid {t_color}; border-radius:10px; margin-bottom:20px;">⏱️ {m:02d}:{s:02d}</div>', unsafe_allow_html=True)
+                if rem == 0: st.error("⏰ Time is up! Submit now for partial credit.")
 
+            st.markdown(f"### 📌 {ch.get('title')}")
             st.markdown(ch.get("description", ""))
 
             if ch.get("examples"):
                 st.markdown("**Examples:**")
                 for ex in ch["examples"]:
-                    st.code(f"Input: {ex.get('input', '')}\nOutput: {ex.get('output', '')}")
+                    st.code(f"Input: {ex.get('input')}\nOutput: {ex.get('output')}")
 
-            if ch.get("constraints"):
-                st.markdown("**Constraints:** " + ", ".join(ch["constraints"]))
+            st.divider()
+            
+            # --- Coding Area ---
+            st.markdown("### 💻 Your Solution")
+            user_code = st.text_area("Write your code here:", value=ch.get("solution_template", ""), height=300, key="user_code")
 
-            user_code = st.text_area("💻 Your Solution:", height=250, key="user_code",
-                                      value=ch.get("solution_template", ""))
+            # --- Expert Mentor ---
+            with st.expander("👨‍🏫 Need Help? Ask Your Expert Mentor", expanded=False):
+                # Mentor logic (reuse existing session_state check)
+                mentor_container = st.container(height=200)
+                with mentor_container:
+                    if not st.session_state.mentor_history: st.write("_No conversation yet._")
+                    for msg in st.session_state.mentor_history:
+                        r = "🧑‍🎓 Student" if msg["role"] == "user" else "👨‍🏫 Mentor"
+                        c = "#e0e0e0" if msg["role"] == "user" else "#6366f1"
+                        st.markdown(f"**<span style='color:{c};'>{r}:</span>** {msg['content']}", unsafe_allow_html=True)
+                
+                mentor_q = st.text_input("Ask Mentor...", key="mentor_query")
+                if st.button("💬 Send", key="ask_button"):
+                    if mentor_q:
+                        st.session_state.mentor_history.append({"role": "user", "content": mentor_q})
+                        with st.spinner("Mentor thinking..."):
+                            guidance = get_mentor_guidance(mentor_q, ch, user_code, st.session_state.mentor_history, resolved_key)
+                            st.session_state.mentor_history.append({"role": "assistant", "content": guidance})
+                            st.rerun()
 
-            if ch.get("hints"):
-                with st.expander("💡 Hints"):
-                    for h in ch["hints"]:
-                        st.markdown(f"- {h}")
-
-            if st.button("✅ Submit Solution", use_container_width=True):
-                if not user_code.strip():
-                    st.warning("Please write some code first!")
-                else:
-                    with st.spinner("Evaluating your solution..."):
-                        result = evaluate_solution(ch, user_code, resolved_key)
-                        if "error" in result:
-                            st.error(result["error"])
-                        else:
-                            score = result.get("score", 0)
-                            if score >= 70:
-                                st.balloons()
-                                st.success(f"🎉 Score: {score}/100 — {result.get('correctness', 'N/A')}")
-                            elif score >= 40:
-                                st.warning(f"⚡ Score: {score}/100 — {result.get('correctness', 'N/A')}")
-                            else:
-                                st.error(f"❌ Score: {score}/100 — {result.get('correctness', 'N/A')}")
-
-                            st.markdown(f"**Feedback:** {result.get('feedback', 'N/A')}")
-                            if result.get("suggestions"):
-                                st.markdown("**Suggestions:**")
-                                for s in result["suggestions"]:
-                                    st.markdown(f"- {s}")
-
-                            # Update leaderboard score
-                            earned = int(ch.get("max_score", 20) * score / 100)
-                            update_score(st.session_state.username, earned, "challenge")
-                            st.info(f"🏅 +{earned} points added to your leaderboard score!")
+            if st.button("✅ Submit Code", use_container_width=True):
+                with st.spinner("Evaluating..."):
+                    result = evaluate_solution(ch, user_code, resolved_key)
+                    if "error" in result: st.error(result["error"])
+                    else:
+                        score = result.get("score", 0)
+                        if score >= 70: st.balloons(); st.success(f"🎉 Perfect! Score: {score}/100")
+                        else: st.warning(f"⚡ Good effort! Score: {score}/100")
+                        st.markdown(f"**Feedback:** {result.get('feedback')}")
+                        earned = int(ch.get("max_score", 20) * score / 100)
+                        update_score(st.session_state.username, earned, "challenge")
+                        st.info(f"🏅 +{earned} points added!")
 
 
 # =====================================================================
@@ -1491,11 +1487,11 @@ with tab_mindmap:
             mermaid_code = st.session_state["mindmap_mermaid"]["mermaid"]
             # Render Mermaid via HTML
             mermaid_html = f"""
-            <div class="mermaid" style="background: #1a1a2e; padding: 20px; border-radius: 12px;">
+            <div class="mermaid" style="background: rgba(255,255,255,0.02); padding: 25px; border-radius: 20px; border: 1px solid rgba(212,175,55,0.15);">
             {mermaid_code}
             </div>
             <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
-            <script>mermaid.initialize({{startOnLoad:true, theme:'dark'}});</script>
+            <script>mermaid.initialize({{startOnLoad:true, theme:'dark', themeVariables: {{ 'primaryColor': '#d4af37', 'edgeLabelBackground':'#121214', 'tertiaryColor': '#1a1a1c' }}}});</script>
             """
             st.components.v1.html(mermaid_html, height=500, scrolling=True)
 
@@ -1542,7 +1538,99 @@ with tab_audio:
 
 
 # =====================================================================
-# TAB 11 – LEADERBOARD
+# TAB 11 – UNIFIED VISUAL EXPLAINER (Pictorial & Video)
+# =====================================================================
+with tab_visual:
+    st.markdown("""
+    <div class="section-card">
+        <h3>🎨 Unified Pictorial & Video Explainer</h3>
+        <p>A powerhouse learning tool: AI images, animated video breakdowns with voice, and smart YouTube links.</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    resolved_key = get_gemini_api_key(st.session_state.api_key)
+
+    if not resolved_key:
+        st.warning("🔑 Please set your API key in the Setup tab first.")
+    else:
+        vis_topic = st.text_input("🎨 Concept to Explain:", placeholder="e.g., Backpropagation in Neural Networks",
+                                   key="visual_topic")
+        vis_context = ""
+        if st.session_state.last_chunks:
+            vis_context = " ".join([c.get("content", "") for c in st.session_state.last_chunks[:3]])
+
+        if st.button("🚀 Generate Visual Explanation", use_container_width=True):
+            if not vis_topic:
+                st.warning("Please enter a concept.")
+            else:
+                with st.spinner("Creating visual explanation..."):
+                    result = generate_visual_explanation(vis_topic, vis_context, resolved_key)
+                    if "error" in result:
+                        st.error(result["error"])
+                    else:
+                        st.session_state["visual_explain"] = result
+                        st.success("✅ Visual explanation ready!")
+
+        if st.session_state.get("visual_explain"):
+            ve = st.session_state["visual_explain"]
+            st.markdown(f"### 🚀 {ve.get('title', 'Unified Visual Explanation')}")
+            
+            # --- Pictorial Analogy (AI Image) ---
+            if ve.get("image_prompt"):
+                st.markdown("#### 🖼️ AI Pictorial Analogy")
+                img_prompt = ve["image_prompt"].replace(" ", "%20")
+                img_url = f"https://image.pollinations.ai/prompt/{img_prompt}?width=800&height=400&nologo=true"
+                st.image(img_url, caption=f"AI Representation: {ve.get('title')}", use_container_width=True)
+
+            # --- Presentation & Voice ---
+            st.divider()
+            col_v1, col_v2 = st.columns([2, 1])
+            with col_v2:
+                # Related Video Search
+                if ve.get("related_video_queries"):
+                    query = ve["related_video_queries"][0].replace(" ", "+")
+                    st.link_button("📺 Watch Related Videos on YouTube", 
+                                  f"https://www.youtube.com/results?search_query={query}",
+                                  use_container_width=True)
+
+                # Voice Presentation
+                full_text = f"Concept: {ve.get('title')}. "
+                for s in ve.get("steps", []): full_text += f"{s.get('text')}. "
+                clean_text = full_text.replace('"', '\\"').replace("'", "\\'")
+                if st.button("🔊 Play Voice Presentation", use_container_width=True):
+                    st.components.v1.html(f"<script>const m=new SpeechSynthesisUtterance('{clean_text}');m.rate=0.9;window.speechSynthesis.speak(m);</script>", height=0)
+
+            with col_v1:
+                # Mermaid Diagram
+                if ve.get("mermaid_code"):
+                    mermaid_html = f"""
+                    <div class="mermaid" style="background: #1a1a2e; padding: 20px; border-radius: 12px;">
+                    {ve['mermaid_code']}
+                    </div>
+                    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+                    <script>mermaid.initialize({{startOnLoad:true, theme:'dark'}});</script>
+                    """
+                    st.components.v1.html(mermaid_html, height=400, scrolling=True)
+
+            # Animated Steps
+            if ve.get("steps"):
+                st.markdown("#### 🔄 Step-by-Step Breakdown")
+                cols = st.columns(min(len(ve["steps"]), 3))
+                for i, step in enumerate(ve["steps"]):
+                    with cols[i % 3]:
+                        st.markdown(f"""
+                        <div class="step-card fade-in">
+                            <span style="font-size:1.5em; color:#6366f1;">{i+1}</span><br>
+                            {step.get('text', '')}
+                        </div>
+                        """, unsafe_allow_html=True)
+            
+            if ve.get("summary"):
+                st.info(f"💡 **Key Insight:** {ve['summary']}")
+
+
+# =====================================================================
+# TAB 12 – LEADERBOARD
 # =====================================================================
 with tab_leader:
     st.markdown("""
@@ -1582,7 +1670,6 @@ with tab_leader:
         # Score breakdown chart using plotly
         if board:
             st.markdown("### 📊 Score Distribution")
-            import pandas as pd
             df = pd.DataFrame(board[:10])
             fig = px.bar(df, x="username", y="score",
                         color="score", title="Top 10 Learners",
@@ -1633,15 +1720,23 @@ with tab_insights:
 
         st.divider()
 
-        # --- Quiz Score Trend ---
+        # --- Quiz Score Trend (Plotly) ---
         if lp.quiz_scores:
             st.markdown("##### 📈 Quiz Score Trend")
             trend = lp.get_quiz_trend()
-            chart_data = {
+            df_trend = pd.DataFrame({
                 "Attempt": list(range(1, len(trend) + 1)),
                 "Score (%)": [s["percentage"] for s in trend],
-            }
-            st.line_chart(chart_data, x="Attempt", y="Score (%)")
+                "Concept": [s["concept"] for s in trend]
+            })
+            fig_trend = px.line(df_trend, x="Attempt", y="Score (%)", hover_name="Concept", markers=True)
+            fig_trend.update_traces(line_color="#d4af37", marker=dict(size=10, color="#d4af37", line=dict(width=2, color="white")))
+            fig_trend.update_layout(
+                plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+                font_color="#e0e0e0", margin=dict(l=0, r=0, t=20, b=0), height=350,
+                xaxis=dict(showgrid=False), yaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.05)")
+            )
+            st.plotly_chart(fig_trend, use_container_width=True)
 
             # Quiz score gain: first vs last attempt per concept
             st.markdown("##### ⬆️ Quiz Score Gain (First ➜ Latest per Concept)")
@@ -1658,16 +1753,24 @@ with tab_insights:
                 arrow = "🟢 +" if gain > 0 else "🔴 " if gain < 0 else "⚪ "
                 st.markdown(f"- **{concept}**: {scores['first']}% → {scores['latest']}% ({arrow}{gain:.1f}%)")
 
-        # --- Most Asked Concepts ---
+        # --- Most Asked Concepts (Plotly) ---
         if lp.concepts_asked:
+            st.divider()
             st.markdown("##### 🔤 Most Asked Concepts")
             freq = lp.get_concept_frequency()
             sorted_freq = sorted(freq.items(), key=lambda x: x[1], reverse=True)[:10]
-            concept_data = {
+            df_freq = pd.DataFrame({
                 "Concept": [c for c, _ in sorted_freq],
-                "Times Asked": [n for _, n in sorted_freq],
-            }
-            st.bar_chart(concept_data, x="Concept", y="Times Asked")
+                "Times Asked": [n for _, n in sorted_freq]
+            })
+            fig_bar = px.bar(df_freq, x="Concept", y="Times Asked", text_auto=True)
+            fig_bar.update_traces(marker_color="#d4af37", marker_line_color="#ffffff", marker_line_width=1, opacity=0.8)
+            fig_bar.update_layout(
+                plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+                font_color="#e0e0e0", margin=dict(l=0, r=0, t=20, b=0), height=350,
+                xaxis=dict(showgrid=False), yaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.05)")
+            )
+            st.plotly_chart(fig_bar, use_container_width=True)
 
         # --- Weak Areas ---
         if lp.weak_concepts:
